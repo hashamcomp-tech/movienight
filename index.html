@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <style>
   :root{
     --bg:#0B0E14;
@@ -257,22 +259,6 @@
     color:var(--text-muted);
     padding:2px 6px;
   }
-  .fullscreen-btn {
-    position: absolute;
-    top: 14px; right: 14px;
-    background: rgba(0,0,0,0.5);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    width: 32px; height: 32px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 18px;
-    cursor: pointer;
-    z-index: 10;
-    transition: background 0.15s, border-color 0.15s;
-    opacity: 0.6;
-  }
-  .fullscreen-btn:hover { background: rgba(0,0,0,0.8); border-color: var(--amber); opacity: 1; }
   .drm-note{
     padding:8px 14px;
     font-size:11.5px;
@@ -351,6 +337,94 @@
   }
 
   .hidden{ display:none !important; }
+
+  /* ---------- Auth ---------- */
+  .field-label{
+    display:block;
+    font-size:12px;
+    color:var(--text-muted);
+    margin:14px 0 6px;
+  }
+  .field-label:first-of-type{ margin-top:0; }
+  input[type=email], input[type=password]{
+    width:100%;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:8px;
+    padding:11px 13px;
+    font-size:15px;
+    font-family:'Space Grotesk',sans-serif;
+    letter-spacing:0.03em;
+  }
+  input[type=email]::placeholder, input[type=password]::placeholder{ color:#565D6B; }
+  .btn-block{ width:100%; }
+  .divider{
+    display:flex; align-items:center; gap:12px;
+    margin:20px 0;
+    color:var(--text-muted);
+    font-size:11px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+  }
+  .divider::before, .divider::after{
+    content:''; flex:1; height:1px; background:var(--border);
+  }
+  .btn-google{
+    background:var(--surface-2);
+    border-color:var(--border);
+    color:var(--text);
+    display:flex; align-items:center; justify-content:center; gap:10px;
+  }
+  .btn-google:hover{ border-color:var(--text-muted); }
+  .btn-google svg{ flex:none; }
+  .auth-switch{
+    text-align:center;
+    margin-top:18px;
+    font-size:13px;
+    color:var(--text-muted);
+  }
+  .auth-switch a{ color:var(--amber); text-decoration:none; cursor:pointer; }
+  .auth-switch a:hover{ text-decoration:underline; }
+
+  .user-chip{
+    display:flex; align-items:center; gap:8px;
+    font-size:12px;
+    padding:5px 6px 5px 6px;
+    border-radius:999px;
+    border:1px solid var(--border);
+    color:var(--text-muted);
+  }
+  .user-chip img{
+    width:22px; height:22px;
+    border-radius:50%;
+    background:var(--surface-2);
+  }
+  .user-chip .avatar-fallback{
+    width:22px; height:22px;
+    border-radius:50%;
+    background:var(--amber);
+    color:#1A1206;
+    font-weight:700;
+    font-size:11px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .user-chip .email{
+    max-width:150px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .user-chip button{
+    background:transparent;
+    border:none;
+    color:var(--text-muted);
+    font-size:11px;
+    padding:2px 6px;
+    text-decoration:underline;
+  }
+  .user-chip button:hover{ color:var(--amber); }
+  .header-right{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 </style>
 </head>
 <body>
@@ -362,16 +436,62 @@
     <h1>Movie&nbsp;Night</h1>
     <span class="sub">watch anything, together, from anywhere</span>
   </div>
-  <div class="status-pill" id="statusPill">
-    <span class="dot" id="statusDot"></span>
-    <span id="statusText">Not connected</span>
+  <div class="header-right">
+    <div class="user-chip hidden" id="userChip">
+      <img id="userAvatarImg" class="hidden" alt="">
+      <span class="avatar-fallback hidden" id="userAvatarFallback"></span>
+      <span class="email" id="userEmail"></span>
+      <button id="btnSignOut">Sign out</button>
+    </div>
+    <div class="status-pill" id="statusPill">
+      <span class="dot" id="statusDot"></span>
+      <span id="statusText">Not connected</span>
+    </div>
   </div>
 </header>
 
 <main>
 
+  <!-- ===== AUTH STAGE ===== -->
+  <div class="stage" id="stage-auth">
+    <div class="card">
+      <h2 id="authTitle">Sign in</h2>
+      <p class="lead" id="authLead">Sign in to host or join a screening.</p>
+
+      <form id="authForm">
+        <label class="field-label" for="authEmail">Email</label>
+        <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" required>
+
+        <label class="field-label" for="authPassword">Password</label>
+        <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password" required>
+
+        <div class="btn-row">
+          <button type="submit" class="btn btn-amber btn-block" id="btnAuthSubmit">Sign In</button>
+        </div>
+      </form>
+
+      <div class="divider">or</div>
+
+      <button class="btn btn-google btn-block" id="btnGoogleSignIn">
+        <svg width="18" height="18" viewBox="0 0 18 18">
+          <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.13-.84 2.09-1.8 2.73v2.27h2.91c1.7-1.57 2.69-3.88 2.69-6.64z"/>
+          <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.27c-.81.54-1.85.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.34C2.44 15.98 5.48 18 9 18z"/>
+          <path fill="#FBBC05" d="M3.96 10.7A5.4 5.4 0 0 1 3.68 9c0-.59.1-1.17.28-1.7V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3-2.34z"/>
+          <path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l3 2.34C4.67 5.16 6.66 3.58 9 3.58z"/>
+        </svg>
+        Continue with Google
+      </button>
+
+      <div class="error-box hidden" id="authError"></div>
+
+      <div class="auth-switch">
+        <span id="authSwitchText">Don't have an account?</span> <a id="authSwitchLink">Create one</a>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== LOBBY STAGE ===== -->
-  <div class="stage" id="stage-lobby">
+  <div class="stage hidden" id="stage-lobby">
     <div class="card">
       <h2>Start or join a screening</h2>
       <p class="lead">Host a screening by sharing your screen, or join a friend's room.</p>
@@ -413,7 +533,7 @@
   <!-- ===== ROOM STAGE ===== -->
   <div class="room hidden" id="stage-room">
     <div>
-      <div class="screen-area" id="screenArea">
+      <div class="screen-area">
         <video class="remote-screen" id="remoteVideo" autoplay playsinline></video>
         <div class="screen-placeholder" id="screenPlaceholder">
           <div class="display">Waiting for the picture…</div>
@@ -423,7 +543,6 @@
           <div class="pip-label">YOU</div>
           <video id="selfVideoRoom" autoplay muted playsinline></video>
         </div>
-        <button class="fullscreen-btn" id="btnFullscreen" title="Fullscreen">⛶</button>
       </div>
       <div class="drm-note">Watching Netflix, Disney+, or another DRM-protected service? The video area may stay black — that's the platform blocking screen capture, not a bug. Audio and non-DRM sources (YouTube, local files) display normally.</div>
       <div class="controls">
@@ -590,15 +709,6 @@
       
       const combined = new MediaStream();
       if(micTrack) combined.addTrack(micTrack);
-      
-      const canvas = document.createElement('canvas');
-      canvas.width = 1; canvas.height = 1;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = 'black';
-      ctx.fillRect(0,0,1,1);
-      const dummyTrack = canvas.captureStream().getVideoTracks()[0];
-      combined.addTrack(dummyTrack);
-      
       localStream = combined;
 
       // 2. Init peer and connect
@@ -637,20 +747,8 @@
       addSystemMessage('Connected — say hi 👋');
     });
     dataConn.on('data', data => {
-      if(!data) return;
-      if(data.type === 'chat'){
+      if(data && data.type === 'chat'){
         addMessage(data.text, false);
-      } else if (data.type === 'request_screen_share' && isHost) {
-        const wrap = document.createElement('div');
-        wrap.className = 'msg sys';
-        wrap.innerHTML = `<div class="bubble"><b>Friend wants to share their screen.</b><br><button class="btn btn-amber grant-btn" style="padding:4px 8px; margin-top:6px; font-size:12px;">Allow</button> <button class="btn btn-outline deny-btn" style="padding:4px 8px; margin-top:6px; font-size:12px;">Deny</button></div>`;
-        el('chatLog').appendChild(wrap);
-        el('chatLog').scrollTop = el('chatLog').scrollHeight;
-      } else if (data.type === 'grant_screen_share' && !isHost) {
-        addSystemMessage('Host allowed screen share. Please select your screen.');
-        startGuestScreenShare();
-      } else if (data.type === 'deny_screen_share' && !isHost) {
-        addSystemMessage('Host denied your request to share screen.');
       }
     });
     dataConn.on('close', () => {
@@ -662,7 +760,10 @@
     hide('stage-lobby');
     show('stage-room');
     el('selfVideoRoom').srcObject = localStream;
-    // btnReshare is now available for guests too
+    if(!isHost){
+      // Guests don't have screen to reshare
+      hide('btnReshare');
+    }
   }
 
   // ---------- Chat ----------
@@ -686,44 +787,13 @@
   function sendChat(){
     const input = el('chatInput');
     const text = input.value.trim();
-    if(!text) return;
-    if(!dataConn || !dataConn.open) {
-      addSystemMessage("Waiting for a friend to join before you can chat.");
-      return;
-    }
+    if(!text || !dataConn || !dataConn.open) return;
     dataConn.send({ type:'chat', text });
     addMessage(text, true);
     input.value = '';
   }
   el('btnSend').addEventListener('click', sendChat);
   el('chatInput').addEventListener('keydown', e => { if(e.key === 'Enter') sendChat(); });
-
-  el('chatLog').addEventListener('click', e => {
-    if(e.target.classList.contains('grant-btn')){
-      if(dataConn) dataConn.send({ type:'grant_screen_share' });
-      e.target.parentNode.innerHTML = '<em>You allowed the request</em>';
-    } else if(e.target.classList.contains('deny-btn')){
-      if(dataConn) dataConn.send({ type:'deny_screen_share' });
-      e.target.parentNode.innerHTML = '<em>You denied the request</em>';
-    }
-  });
-
-  async function startGuestScreenShare() {
-    try{
-      const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
-      const newTrack = display.getVideoTracks()[0];
-      if(mediaConn && mediaConn.peerConnection){
-        const sender = mediaConn.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-        if(sender) sender.replaceTrack(newTrack);
-      }
-      localStream.getVideoTracks().forEach(t => localStream.removeTrack(t));
-      localStream.addTrack(newTrack);
-      el('selfVideoRoom').srcObject = localStream;
-      screenTrack = newTrack;
-    }catch(err){ 
-      addSystemMessage('Screen share cancelled.');
-    }
-  }
 
   // ---------- Room controls ----------
   el('btnMic').addEventListener('click', () => {
@@ -735,13 +805,6 @@
   });
 
   el('btnReshare').addEventListener('click', async () => {
-    if(!isHost) {
-      if(dataConn && dataConn.open) {
-        addSystemMessage('Request sent to host...');
-        dataConn.send({ type: 'request_screen_share' });
-      }
-      return;
-    }
     try{
       const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
       const newTrack = display.getVideoTracks()[0];
@@ -764,14 +827,132 @@
     location.reload();
   });
 
-  el('btnFullscreen').addEventListener('click', () => {
-    const area = el('screenArea');
-    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-      if(area.requestFullscreen) area.requestFullscreen();
-      else if(area.webkitRequestFullscreen) area.webkitRequestFullscreen();
+  // ---------- Firebase auth ----------
+  // TODO: replace with your own project's config (Firebase console -> Project settings -> General -> Your apps)
+  const firebaseConfig = {
+    apiKey: "AIzaSyA7Gq6TqE9e1tpbmqFTWlvnzIslFfDDiaY",
+    authDomain: "movienight-36005.firebaseapp.com",
+    projectId: "movienight-36005",
+    storageBucket: "movienight-36005.firebasestorage.app",
+    messagingSenderId: "66306477101",
+    appId: "1:66306477101:web:842aff7f7a4cf7f3f37ca4",
+    measurementId: "G-0TQ8BWN402"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+
+  let authMode = 'signin'; // 'signin' | 'signup'
+
+  function setAuthMode(mode){
+    authMode = mode;
+    clearAuthError();
+    if(mode === 'signup'){
+      el('authTitle').textContent = 'Create an account';
+      el('authLead').textContent = 'Sign up to host or join a screening.';
+      el('btnAuthSubmit').textContent = 'Sign Up';
+      el('authPassword').setAttribute('autocomplete','new-password');
+      el('authSwitchText').textContent = 'Already have an account?';
+      el('authSwitchLink').textContent = 'Sign in';
     } else {
-      if(document.exitFullscreen) document.exitFullscreen();
-      else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+      el('authTitle').textContent = 'Sign in';
+      el('authLead').textContent = 'Sign in to host or join a screening.';
+      el('btnAuthSubmit').textContent = 'Sign In';
+      el('authPassword').setAttribute('autocomplete','current-password');
+      el('authSwitchText').textContent = "Don't have an account?";
+      el('authSwitchLink').textContent = 'Create one';
+    }
+  }
+  el('authSwitchLink').addEventListener('click', () => {
+    setAuthMode(authMode === 'signin' ? 'signup' : 'signin');
+  });
+
+  function showAuthError(msg){
+    const box = el('authError');
+    box.textContent = msg;
+    box.classList.remove('hidden');
+  }
+  function clearAuthError(){ el('authError').classList.add('hidden'); }
+
+  function friendlyAuthError(err){
+    switch(err && err.code){
+      case 'auth/invalid-email': return 'That email address looks invalid.';
+      case 'auth/user-not-found': return 'No account found with that email.';
+      case 'auth/wrong-password': return 'Incorrect password.';
+      case 'auth/invalid-credential': return 'Incorrect email or password.';
+      case 'auth/email-already-in-use': return 'An account already exists with that email.';
+      case 'auth/weak-password': return 'Password should be at least 6 characters.';
+      case 'auth/popup-closed-by-user': return 'Google sign-in was closed before finishing.';
+      default: return (err && err.message) ? err.message : 'Something went wrong. Please try again.';
+    }
+  }
+
+  el('authForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearAuthError();
+    const email = el('authEmail').value.trim();
+    const password = el('authPassword').value;
+    el('btnAuthSubmit').disabled = true;
+    try{
+      if(authMode === 'signup'){
+        await auth.createUserWithEmailAndPassword(email, password);
+      } else {
+        await auth.signInWithEmailAndPassword(email, password);
+      }
+    }catch(err){
+      showAuthError(friendlyAuthError(err));
+    }finally{
+      el('btnAuthSubmit').disabled = false;
+    }
+  });
+
+  el('btnGoogleSignIn').addEventListener('click', async () => {
+    clearAuthError();
+    const provider = new firebase.auth.GoogleAuthProvider();
+    try{
+      await auth.signInWithPopup(provider);
+    }catch(err){
+      showAuthError(friendlyAuthError(err));
+    }
+  });
+
+  el('btnSignOut').addEventListener('click', async () => {
+    try{
+      if(dataConn) dataConn.close();
+      if(mediaConn) mediaConn.close();
+      if(peer) peer.destroy();
+      if(localStream) localStream.getTracks().forEach(t => t.stop());
+    }catch(e){ /* ignore cleanup errors during sign-out */ }
+    await auth.signOut();
+  });
+
+  function renderUserChip(user){
+    el('userEmail').textContent = user.displayName || user.email || 'Signed in';
+    const img = el('userAvatarImg');
+    const fallback = el('userAvatarFallback');
+    if(user.photoURL){
+      img.src = user.photoURL;
+      img.classList.remove('hidden');
+      fallback.classList.add('hidden');
+    } else {
+      img.classList.add('hidden');
+      fallback.classList.remove('hidden');
+      const letter = (user.displayName || user.email || '?').trim().charAt(0).toUpperCase();
+      fallback.textContent = letter;
+    }
+    el('userChip').classList.remove('hidden');
+  }
+
+  auth.onAuthStateChanged(user => {
+    if(user){
+      renderUserChip(user);
+      hide('stage-auth');
+      show('stage-lobby');
+    } else {
+      el('userChip').classList.add('hidden');
+      hide('stage-room');
+      hide('stage-lobby');
+      show('stage-auth');
+      setAuthMode('signin');
     }
   });
 
