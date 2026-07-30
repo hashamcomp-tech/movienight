@@ -106,21 +106,6 @@
   }
   .card h2{ font-size:24px; margin:0 0 6px; color:var(--text); }
   .card p.lead{ color:var(--text-muted); font-size:14px; margin:0 0 22px; line-height:1.5; }
-  .step{
-    display:flex; gap:12px; align-items:flex-start;
-    padding:14px 0;
-    border-top:1px solid var(--border);
-  }
-  .step:first-of-type{ border-top:none; }
-  .step-num{
-    font-family:'Bebas Neue',sans-serif;
-    font-size:20px;
-    color:var(--amber);
-    width:26px; flex:none;
-  }
-  .step-body{ flex:1; }
-  .step-body .label{ font-size:14px; font-weight:600; margin-bottom:2px; }
-  .step-body .hint{ font-size:12.5px; color:var(--text-muted); line-height:1.5; }
 
   .btn{
     border-radius:8px;
@@ -153,7 +138,7 @@
   }
   input[type=text]::placeholder{ color:#565D6B; }
 
-  .toggle-row{ display:flex; gap:10px; margin:20px 0 4px; }
+  .toggle-row{ display:flex; gap:10px; margin:20px 0 16px; }
   .toggle{
     flex:1;
     text-align:center;
@@ -369,41 +354,11 @@
 
 <main>
 
-  <!-- ===== SETUP STAGE ===== -->
-  <div class="stage" id="stage-setup">
-    <div class="card">
-      <h2>Get your screen &amp; mic ready</h2>
-      <p class="lead">You'll share this with your friend once you're both in the room. Nothing leaves your browser except the direct connection between the two of you.</p>
-
-      <div class="step">
-        <div class="step-num">1</div>
-        <div class="step-body">
-          <div class="label">Share your screen</div>
-          <div class="hint">Pick a tab, window, or your whole screen. Check "share tab audio" if you want the movie's sound to carry over.</div>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-num">2</div>
-        <div class="step-body">
-          <div class="label">Turn on your mic</div>
-          <div class="hint">So you can talk while you watch. You can mute it anytime once connected.</div>
-        </div>
-      </div>
-
-      <div class="btn-row">
-        <button class="btn btn-amber" id="btnSetup">Set Up Screen &amp; Mic</button>
-      </div>
-
-      <video class="self-preview hidden" id="setupPreview" autoplay muted playsinline></video>
-      <div class="error-box hidden" id="setupError"></div>
-    </div>
-  </div>
-
   <!-- ===== LOBBY STAGE ===== -->
-  <div class="stage hidden" id="stage-lobby">
+  <div class="stage" id="stage-lobby">
     <div class="card">
       <h2>Start or join a screening</h2>
-      <p class="lead">One of you creates the room, the other joins with the code.</p>
+      <p class="lead">Host a screening by sharing your screen, or join a friend's room.</p>
 
       <div class="toggle-row">
         <div class="toggle active" id="toggleHost">Host</div>
@@ -412,8 +367,9 @@
 
       <!-- HOST -->
       <div id="hostPanel">
+        <div style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">You'll need to share your screen and microphone.</div>
         <div class="btn-row">
-          <button class="btn btn-amber" id="btnCreateRoom">Create Room</button>
+          <button class="btn btn-amber" id="btnCreateRoom">Share Screen & Create Room</button>
         </div>
         <div class="marquee hidden" id="hostMarquee">
           <div class="bulbs"></div>
@@ -422,10 +378,12 @@
           <div class="copy-hint" id="copyHint">Tap to copy · send it to your friend</div>
         </div>
         <div id="hostWaiting" class="hint hidden" style="color:var(--text-muted); font-size:13px; margin-top:10px;">Waiting for your friend to join…</div>
+        <video class="self-preview hidden" id="setupPreview" autoplay muted playsinline style="margin-top:20px;"></video>
       </div>
 
       <!-- JOIN -->
       <div id="joinPanel" class="hidden">
+        <div style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">You only need to share your microphone so you can chat.</div>
         <input type="text" id="joinCodeInput" placeholder="Enter room code">
         <div class="btn-row">
           <button class="btn btn-amber" id="btnJoinRoom">Join Screening</button>
@@ -506,46 +464,6 @@
   }
   function clearError(boxId){ el(boxId).classList.add('hidden'); }
 
-  // ---------- Setup stage: capture screen + mic ----------
-  el('btnSetup').addEventListener('click', async () => {
-    clearError('setupError');
-    try{
-      const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
-      screenTrack = display.getVideoTracks()[0];
-      const screenAudioTrack = display.getAudioTracks()[0]; // may be undefined depending on browser/source
-
-      let mic;
-      try{
-        mic = await navigator.mediaDevices.getUserMedia({ audio:true });
-        micTrack = mic.getAudioTracks()[0];
-        if(micTrack) micTrack.enabled = false;
-      }catch(micErr){
-        micTrack = null; // proceed without mic if user denies it
-      }
-
-      const combined = new MediaStream();
-      combined.addTrack(screenTrack);
-      if(screenAudioTrack) combined.addTrack(screenAudioTrack);
-      if(micTrack) combined.addTrack(micTrack);
-      localStream = combined;
-
-      // If the user stops sharing from the browser's native UI, reflect that
-      screenTrack.addEventListener('ended', () => {
-        setStatus('Screen sharing stopped', 'err');
-      });
-
-      const preview = el('setupPreview');
-      preview.srcObject = localStream;
-      show('setupPreview');
-
-      hide('stage-setup');
-      show('stage-lobby');
-      setStatus('Ready to connect', null);
-    }catch(err){
-      showError('setupError', "Couldn't get screen/mic access: " + (err && err.message ? err.message : err) + ". Make sure you allow the permission prompts, and that you're on https (or localhost).");
-    }
-  });
-
   // ---------- Lobby: host/join toggle ----------
   el('toggleHost').addEventListener('click', () => {
     el('toggleHost').classList.add('active');
@@ -564,6 +482,8 @@
     peer.on('error', err => {
       showError('lobbyError', 'Connection error: ' + (err && err.type ? err.type : err));
       setStatus('Connection error', 'err');
+      el('btnCreateRoom').disabled = false;
+      if (el('btnJoinRoom')) el('btnJoinRoom').disabled = false;
     });
     peer.on('connection', conn => {
       dataConn = conn;
@@ -578,17 +498,53 @@
   }
 
   // ---------- Host flow ----------
-  el('btnCreateRoom').addEventListener('click', () => {
+  el('btnCreateRoom').addEventListener('click', async () => {
     clearError('lobbyError');
-    isHost = true;
-    el('btnCreateRoom').disabled = true;
-    initPeer(id => {
-      el('hostCode').textContent = id;
-      show('hostMarquee');
-      show('hostWaiting');
-      setStatus('Room open, waiting…', null);
-    });
+    
+    // 1. Get media first
+    try{
+      const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
+      screenTrack = display.getVideoTracks()[0];
+      const screenAudioTrack = display.getAudioTracks()[0];
+
+      let mic;
+      try{
+        mic = await navigator.mediaDevices.getUserMedia({ audio:true });
+        micTrack = mic.getAudioTracks()[0];
+        if(micTrack) micTrack.enabled = false;
+      }catch(micErr){
+        micTrack = null;
+      }
+
+      const combined = new MediaStream();
+      combined.addTrack(screenTrack);
+      if(screenAudioTrack) combined.addTrack(screenAudioTrack);
+      if(micTrack) combined.addTrack(micTrack);
+      localStream = combined;
+
+      screenTrack.addEventListener('ended', () => {
+        setStatus('Screen sharing stopped', 'err');
+      });
+
+      const preview = el('setupPreview');
+      preview.srcObject = localStream;
+      show('setupPreview');
+
+      // 2. Init Peer
+      isHost = true;
+      el('btnCreateRoom').disabled = true;
+      initPeer(id => {
+        el('hostCode').textContent = id;
+        show('hostMarquee');
+        show('hostWaiting');
+        setStatus('Room open, waiting…', null);
+      });
+      
+    }catch(err){
+      showError('lobbyError', "Couldn't get screen/mic access: " + (err && err.message ? err.message : err));
+    }
   });
+
   el('hostMarquee') && el('hostMarquee').addEventListener('click', () => {
     const code = el('hostCode').textContent;
     if(code && code !== '— — — —'){
@@ -599,20 +555,40 @@
   });
 
   // ---------- Join flow ----------
-  el('btnJoinRoom').addEventListener('click', () => {
+  el('btnJoinRoom').addEventListener('click', async () => {
     clearError('lobbyError');
     const code = el('joinCodeInput').value.trim();
     if(!code){ showError('lobbyError','Enter a room code first.'); return; }
-    isHost = false;
-    el('btnJoinRoom').disabled = true;
-    initPeer(myId => {
-      dataConn = peer.connect(code);
-      wireDataConnection();
-      mediaConn = peer.call(code, localStream);
-      wireMediaConnection();
-      enterRoom();
-      setStatus('Connecting…', null);
-    });
+    
+    // 1. Get mic only
+    try {
+      let mic;
+      try{
+        mic = await navigator.mediaDevices.getUserMedia({ audio:true });
+        micTrack = mic.getAudioTracks()[0];
+        if(micTrack) micTrack.enabled = false;
+      }catch(micErr){
+        micTrack = null;
+      }
+      
+      const combined = new MediaStream();
+      if(micTrack) combined.addTrack(micTrack);
+      localStream = combined;
+
+      // 2. Init peer and connect
+      isHost = false;
+      el('btnJoinRoom').disabled = true;
+      initPeer(myId => {
+        dataConn = peer.connect(code);
+        wireDataConnection();
+        mediaConn = peer.call(code, localStream);
+        wireMediaConnection();
+        enterRoom();
+        setStatus('Connecting…', null);
+      });
+    }catch(err){
+      showError('lobbyError', "Error initializing mic: " + (err && err.message ? err.message : err));
+    }
   });
 
   function wireMediaConnection(){
@@ -648,6 +624,10 @@
     hide('stage-lobby');
     show('stage-room');
     el('selfVideoRoom').srcObject = localStream;
+    if(!isHost){
+      // Guests don't have screen to reshare
+      hide('btnReshare');
+    }
   }
 
   // ---------- Chat ----------
