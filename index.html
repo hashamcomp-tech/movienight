@@ -452,7 +452,7 @@
       </div>
       <div class="drm-note">Watching Netflix, Disney+, or another DRM-protected service? The video area may stay black — that's the platform blocking screen capture, not a bug. Audio and non-DRM sources (YouTube, local files) display normally.</div>
       <div class="controls">
-        <button class="ctrl-btn" id="btnMic" title="Mute/unmute mic">🎙️</button>
+        <button class="ctrl-btn off" id="btnMic" title="Mute/unmute mic">🔇</button>
         <button class="ctrl-btn" id="btnReshare" title="Re-select what you're sharing">🖥️</button>
         <div class="ctrl-spacer"></div>
         <button class="btn btn-danger" id="btnLeave">Leave</button>
@@ -487,7 +487,7 @@
   let mediaConn = null;
   let dataConn = null;
   let isHost = false;
-  let micEnabled = true;
+  let micEnabled = false;
 
   const el = id => document.getElementById(id);
   const show = id => el(id).classList.remove('hidden');
@@ -518,6 +518,7 @@
       try{
         mic = await navigator.mediaDevices.getUserMedia({ audio:true });
         micTrack = mic.getAudioTracks()[0];
+        if(micTrack) micTrack.enabled = false;
       }catch(micErr){
         micTrack = null; // proceed without mic if user denies it
       }
