@@ -651,11 +651,7 @@
   function sendChat(){
     const input = el('chatInput');
     const text = input.value.trim();
-    if(!text) return;
-    if(!dataConn || !dataConn.open) {
-      addSystemMessage("Waiting for a friend to join before you can chat.");
-      return;
-    }
+    if(!text || !dataConn || !dataConn.open) return;
     dataConn.send({ type:'chat', text });
     addMessage(text, true);
     input.value = '';
