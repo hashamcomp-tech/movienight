@@ -257,6 +257,22 @@
     color:var(--text-muted);
     padding:2px 6px;
   }
+  .fullscreen-btn {
+    position: absolute;
+    top: 14px; right: 14px;
+    background: rgba(0,0,0,0.5);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    cursor: pointer;
+    z-index: 10;
+    transition: background 0.15s, border-color 0.15s;
+    opacity: 0.6;
+  }
+  .fullscreen-btn:hover { background: rgba(0,0,0,0.8); border-color: var(--amber); opacity: 1; }
   .drm-note{
     padding:8px 14px;
     font-size:11.5px;
@@ -397,7 +413,7 @@
   <!-- ===== ROOM STAGE ===== -->
   <div class="room hidden" id="stage-room">
     <div>
-      <div class="screen-area">
+      <div class="screen-area" id="screenArea">
         <video class="remote-screen" id="remoteVideo" autoplay playsinline></video>
         <div class="screen-placeholder" id="screenPlaceholder">
           <div class="display">Waiting for the picture…</div>
@@ -407,6 +423,7 @@
           <div class="pip-label">YOU</div>
           <video id="selfVideoRoom" autoplay muted playsinline></video>
         </div>
+        <button class="fullscreen-btn" id="btnFullscreen" title="Fullscreen">⛶</button>
       </div>
       <div class="drm-note">Watching Netflix, Disney+, or another DRM-protected service? The video area may stay black — that's the platform blocking screen capture, not a bug. Audio and non-DRM sources (YouTube, local files) display normally.</div>
       <div class="controls">
@@ -745,6 +762,17 @@
     if(peer) peer.destroy();
     if(localStream) localStream.getTracks().forEach(t => t.stop());
     location.reload();
+  });
+
+  el('btnFullscreen').addEventListener('click', () => {
+    const area = el('screenArea');
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      if(area.requestFullscreen) area.requestFullscreen();
+      else if(area.webkitRequestFullscreen) area.webkitRequestFullscreen();
+    } else {
+      if(document.exitFullscreen) document.exitFullscreen();
+      else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
   });
 
 })();
