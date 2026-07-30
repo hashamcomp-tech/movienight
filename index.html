@@ -573,6 +573,15 @@
       
       const combined = new MediaStream();
       if(micTrack) combined.addTrack(micTrack);
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = 1; canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0,0,1,1);
+      const dummyTrack = canvas.captureStream().getVideoTracks()[0];
+      combined.addTrack(dummyTrack);
+      
       localStream = combined;
 
       // 2. Init peer and connect
@@ -611,8 +620,20 @@
       addSystemMessage('Connected — say hi 👋');
     });
     dataConn.on('data', data => {
-      if(data && data.type === 'chat'){
+      if(!data) return;
+      if(data.type === 'chat'){
         addMessage(data.text, false);
+      } else if (data.type === 'request_screen_share' && isHost) {
+        const wrap = document.createElement('div');
+        wrap.className = 'msg sys';
+        wrap.innerHTML = `<div class="bubble"><b>Friend wants to share their screen.</b><br><button class="btn btn-amber grant-btn" style="padding:4px 8px; margin-top:6px; font-size:12px;">Allow</button> <button class="btn btn-outline deny-btn" style="padding:4px 8px; margin-top:6px; font-size:12px;">Deny</button></div>`;
+        el('chatLog').appendChild(wrap);
+        el('chatLog').scrollTop = el('chatLog').scrollHeight;
+      } else if (data.type === 'grant_screen_share' && !isHost) {
+        addSystemMessage('Host allowed screen share. Please select your screen.');
+        startGuestScreenShare();
+      } else if (data.type === 'deny_screen_share' && !isHost) {
+        addSystemMessage('Host denied your request to share screen.');
       }
     });
     dataConn.on('close', () => {
@@ -624,10 +645,7 @@
     hide('stage-lobby');
     show('stage-room');
     el('selfVideoRoom').srcObject = localStream;
-    if(!isHost){
-      // Guests don't have screen to reshare
-      hide('btnReshare');
-    }
+    // btnReshare is now available for guests too
   }
 
   // ---------- Chat ----------
@@ -663,6 +681,33 @@
   el('btnSend').addEventListener('click', sendChat);
   el('chatInput').addEventListener('keydown', e => { if(e.key === 'Enter') sendChat(); });
 
+  el('chatLog').addEventListener('click', e => {
+    if(e.target.classList.contains('grant-btn')){
+      if(dataConn) dataConn.send({ type:'grant_screen_share' });
+      e.target.parentNode.innerHTML = '<em>You allowed the request</em>';
+    } else if(e.target.classList.contains('deny-btn')){
+      if(dataConn) dataConn.send({ type:'deny_screen_share' });
+      e.target.parentNode.innerHTML = '<em>You denied the request</em>';
+    }
+  });
+
+  async function startGuestScreenShare() {
+    try{
+      const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
+      const newTrack = display.getVideoTracks()[0];
+      if(mediaConn && mediaConn.peerConnection){
+        const sender = mediaConn.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+        if(sender) sender.replaceTrack(newTrack);
+      }
+      localStream.getVideoTracks().forEach(t => localStream.removeTrack(t));
+      localStream.addTrack(newTrack);
+      el('selfVideoRoom').srcObject = localStream;
+      screenTrack = newTrack;
+    }catch(err){ 
+      addSystemMessage('Screen share cancelled.');
+    }
+  }
+
   // ---------- Room controls ----------
   el('btnMic').addEventListener('click', () => {
     if(!micTrack) return;
@@ -673,6 +718,13 @@
   });
 
   el('btnReshare').addEventListener('click', async () => {
+    if(!isHost) {
+      if(dataConn && dataConn.open) {
+        addSystemMessage('Request sent to host...');
+        dataConn.send({ type: 'request_screen_share' });
+      }
+      return;
+    }
     try{
       const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
       const newTrack = display.getVideoTracks()[0];
