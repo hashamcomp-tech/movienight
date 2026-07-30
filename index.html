@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --bg:#0B0E14;
@@ -175,11 +176,13 @@
   }
   .marquee .eyebrow{ font-size:11px; letter-spacing:0.15em; color:var(--amber-dim); text-transform:uppercase; margin-bottom:6px; }
   .marquee .code{
-    font-family:'Bebas Neue', sans-serif;
-    font-size:40px;
-    letter-spacing:0.12em;
+    font-family:'Space Grotesk', monospace;
+    font-size:19px;
+    font-weight:700;
+    letter-spacing:0.02em;
     color:var(--amber);
     word-break:break-all;
+    line-height:1.4;
   }
   .marquee .copy-hint{ font-size:12px; color:var(--text-muted); margin-top:8px; }
 
@@ -503,15 +506,19 @@
 
       <!-- HOST -->
       <div id="hostPanel">
-        <div style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">You'll need to share your screen and microphone.</div>
-        <div class="btn-row">
-          <button class="btn btn-amber" id="btnCreateRoom">Share Screen & Create Room</button>
-        </div>
-        <div class="marquee hidden" id="hostMarquee">
+        <div class="marquee" id="hostMarquee">
           <div class="bulbs"></div>
-          <div class="eyebrow">Room Code</div>
+          <div class="eyebrow">Your Permanent Room ID</div>
           <div class="code" id="hostCode">— — — —</div>
           <div class="copy-hint" id="copyHint">Tap to copy · send it to your friend</div>
+        </div>
+        <div class="room-name-row" style="display:flex; align-items:center; justify-content:center; gap:8px; margin:12px 0 18px; font-size:13px; color:var(--text-muted);">
+          <span id="hostRoomName">My Room</span>
+          <a id="btnRenameRoom" style="color:var(--amber); cursor:pointer; text-decoration:none;">rename</a>
+        </div>
+        <div style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">You'll need to share your screen and microphone.</div>
+        <div class="btn-row">
+          <button class="btn btn-amber" id="btnCreateRoom">Share Screen & Open Room</button>
         </div>
         <div id="hostWaiting" class="hint hidden" style="color:var(--text-muted); font-size:13px; margin-top:10px;">Waiting for your friend to join…</div>
         <video class="self-preview hidden" id="setupPreview" autoplay muted playsinline style="margin-top:20px;"></video>
@@ -520,13 +527,27 @@
       <!-- JOIN -->
       <div id="joinPanel" class="hidden">
         <div style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">You only need to share your microphone so you can chat.</div>
-        <input type="text" id="joinCodeInput" placeholder="Enter room code">
+        <input type="text" id="joinCodeInput" placeholder="Enter room ID">
         <div class="btn-row">
           <button class="btn btn-amber" id="btnJoinRoom">Join Screening</button>
         </div>
       </div>
 
       <div class="error-box hidden" id="lobbyError"></div>
+    </div>
+  </div>
+
+  <!-- ===== ROOM SETUP STAGE (first-time: name your room) ===== -->
+  <div class="stage hidden" id="stage-room-setup">
+    <div class="card">
+      <h2>Name your room</h2>
+      <p class="lead">This is your permanent room. Its code never changes, so you can reuse it and share it with the same friends any time.</p>
+      <label class="field-label" for="roomNameInput">Room name</label>
+      <input type="text" id="roomNameInput" placeholder="e.g. Friday Movie Night" maxlength="40">
+      <div class="btn-row">
+        <button class="btn btn-amber btn-block" id="btnCreateRoomSetup">Create My Room</button>
+      </div>
+      <div class="error-box hidden" id="roomSetupError"></div>
     </div>
   </div>
 
@@ -582,6 +603,7 @@
   let dataConn = null;
   let isHost = false;
   let micEnabled = false;
+  let currentRoom = null; // { id, name } — the signed-in user's permanent room
 
   const el = id => document.getElementById(id);
   const show = id => el(id).classList.remove('hidden');
@@ -612,11 +634,15 @@
     show('joinPanel'); hide('hostPanel');
   });
 
-  function initPeer(onOpen){
-    peer = new Peer(); // uses PeerJS's free public signaling server
+  function initPeer(onOpen, fixedId){
+    peer = fixedId ? new Peer(fixedId) : new Peer(); // uses PeerJS's free public signaling server
     peer.on('open', id => onOpen(id));
     peer.on('error', err => {
-      showError('lobbyError', 'Connection error: ' + (err && err.type ? err.type : err));
+      if(fixedId && err && err.type === 'unavailable-id'){
+        showError('lobbyError', 'Your room is already open in another tab or device. Close it there first, then try again.');
+      } else {
+        showError('lobbyError', 'Connection error: ' + (err && err.type ? err.type : err));
+      }
       setStatus('Connection error', 'err');
       el('btnCreateRoom').disabled = false;
       if (el('btnJoinRoom')) el('btnJoinRoom').disabled = false;
@@ -666,15 +692,13 @@
       preview.srcObject = localStream;
       show('setupPreview');
 
-      // 2. Init Peer
+      // 2. Init Peer using this user's permanent room ID
       isHost = true;
       el('btnCreateRoom').disabled = true;
       initPeer(id => {
-        el('hostCode').textContent = id;
-        show('hostMarquee');
         show('hostWaiting');
         setStatus('Room open, waiting…', null);
-      });
+      }, currentRoom && currentRoom.id);
       
     }catch(err){
       showError('lobbyError', "Couldn't get screen/mic access: " + (err && err.message ? err.message : err));
@@ -840,6 +864,7 @@
   };
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
+  const db = firebase.firestore();
 
   let authMode = 'signin'; // 'signin' | 'signup'
 
@@ -922,6 +947,7 @@
       if(peer) peer.destroy();
       if(localStream) localStream.getTracks().forEach(t => t.stop());
     }catch(e){ /* ignore cleanup errors during sign-out */ }
+    currentRoom = null;
     await auth.signOut();
   });
 
@@ -942,15 +968,130 @@
     el('userChip').classList.remove('hidden');
   }
 
-  auth.onAuthStateChanged(user => {
+  // ---------- Permanent room ----------
+  function generateRoomCode(){
+    // Long, high-entropy, URL/WebRTC-safe ID (letters, digits, - and _).
+    // True punctuation like @ # % & isn't used here because PeerJS IDs travel
+    // through URLs and the signaling server, and those characters can break
+    // the connection — this charset stays 100% compatible while still giving
+    // ~140 bits of entropy, far beyond guessable.
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const length = 24;
+    let code = '';
+    if(window.crypto && window.crypto.getRandomValues){
+      const rand = new Uint32Array(length);
+      window.crypto.getRandomValues(rand);
+      for(let i=0;i<length;i++) code += chars[rand[i] % chars.length];
+    } else {
+      for(let i=0;i<length;i++) code += chars[Math.floor(Math.random()*chars.length)];
+    }
+    return code;
+  }
+
+  async function createRoomForUser(user, name){
+    let code, taken = true;
+    for(let i=0;i<8;i++){
+      code = generateRoomCode();
+      const existing = await db.collection('rooms').doc(code).get();
+      if(!existing.exists){ taken = false; break; }
+    }
+    if(taken) throw new Error("Couldn't generate a free room code — please try again.");
+    const roomName = (name && name.trim()) ? name.trim() : 'My Room';
+    await db.collection('rooms').doc(code).set({
+      uid: user.uid,
+      name: roomName,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await db.collection('users').doc(user.uid).set({
+      roomId: code,
+      roomName: roomName,
+      email: user.email || null
+    }, { merge:true });
+    return { id: code, name: roomName };
+  }
+
+  async function loadRoomForUser(uid){
+    const doc = await db.collection('users').doc(uid).get();
+    if(doc.exists && doc.data().roomId){
+      const data = doc.data();
+      return { id: data.roomId, name: data.roomName || 'My Room' };
+    }
+    return null;
+  }
+
+  function populateHostRoomUI(room){
+    el('hostCode').textContent = room.id;
+    el('hostRoomName').textContent = room.name;
+  }
+
+  el('btnCreateRoomSetup').addEventListener('click', async () => {
+    const user = auth.currentUser;
+    if(!user) return;
+    const nameInput = el('roomNameInput').value;
+    el('btnCreateRoomSetup').disabled = true;
+    el('roomSetupError').classList.add('hidden');
+    try{
+      const room = await createRoomForUser(user, nameInput);
+      currentRoom = room;
+      populateHostRoomUI(room);
+      hide('stage-room-setup');
+      show('stage-lobby');
+    }catch(err){
+      el('roomSetupError').textContent = (err && err.message) ? err.message : 'Could not create your room. Please try again.';
+      el('roomSetupError').classList.remove('hidden');
+    }finally{
+      el('btnCreateRoomSetup').disabled = false;
+    }
+  });
+
+  el('btnRenameRoom').addEventListener('click', async () => {
+    if(!currentRoom || !auth.currentUser) return;
+    const newName = prompt('Rename your room:', currentRoom.name);
+    if(newName === null) return; // cancelled
+    const trimmed = newName.trim();
+    if(!trimmed) return;
+    try{
+      await db.collection('users').doc(auth.currentUser.uid).set({ roomName: trimmed }, { merge:true });
+      await db.collection('rooms').doc(currentRoom.id).set({ name: trimmed }, { merge:true });
+      currentRoom.name = trimmed;
+      el('hostRoomName').textContent = trimmed;
+    }catch(err){
+      showError('lobbyError', "Couldn't rename your room: " + (err && err.message ? err.message : err));
+    }
+  });
+
+  auth.onAuthStateChanged(async user => {
     if(user){
       renderUserChip(user);
       hide('stage-auth');
-      show('stage-lobby');
+      hide('stage-room');
+      try{
+        const room = await loadRoomForUser(user.uid);
+        if(room){
+          currentRoom = room;
+          populateHostRoomUI(room);
+          hide('stage-room-setup');
+          show('stage-lobby');
+        } else {
+          currentRoom = null;
+          hide('stage-lobby');
+          const suggested = user.displayName ? (user.displayName + "'s Room") : 'My Room';
+          el('roomNameInput').value = suggested;
+          show('stage-room-setup');
+        }
+      }catch(err){
+        // Firestore unreachable/misconfigured — fall back to showing the lobby without a permanent room
+        currentRoom = null;
+        showError('lobbyError', "Couldn't load your room: " + (err && err.message ? err.message : err));
+        hide('stage-room-setup');
+        show('stage-lobby');
+      }
     } else {
+      currentRoom = null;
       el('userChip').classList.add('hidden');
       hide('stage-room');
       hide('stage-lobby');
+      hide('stage-room-setup');
       show('stage-auth');
       setAuthMode('signin');
     }
