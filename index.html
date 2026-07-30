@@ -77,7 +77,9 @@
     gap:16px;
     flex-wrap:wrap;
   }
-  header .brand{ display:flex; align-items:baseline; gap:10px; }
+  header .brand{ display:flex; align-items:baseline; gap:10px; cursor:pointer; }
+  header .brand:hover h1{ color:#ffc35e; }
+  header .brand:focus-visible{ outline:2px solid var(--amber); outline-offset:4px; border-radius:4px; }
   header .brand h1{ font-size:32px; color:var(--amber); margin:0; }
   header .brand .sub{ color:var(--text-muted); font-size:13px; }
   .status-pill{
@@ -287,6 +289,10 @@
   }
   .ctrl-btn:hover{ border-color:var(--amber); }
   .ctrl-btn.off{ background:rgba(232,92,92,0.12); border-color:var(--danger); color:#ffb1b1; }
+  .ctrl-btn-wide{
+    width:auto; border-radius:8px; padding:0 14px; font-size:12.5px; font-weight:600; gap:6px;
+  }
+  .ctrl-btn-wide:disabled{ opacity:0.55; cursor:default; border-color:var(--border); }
   .ctrl-spacer{ flex:1; }
 
   /* ---------- Chat panel ---------- */
@@ -428,6 +434,34 @@
   }
   .user-chip button:hover{ color:var(--amber); }
   .header-right{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+
+  /* ---------- Home page ---------- */
+  .home-section{ margin-top:22px; padding-top:18px; border-top:1px solid var(--border); }
+  .home-section:first-of-type{ margin-top:0; padding-top:0; border-top:none; }
+  .home-section-title{
+    font-size:12px; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--text-muted); margin-bottom:12px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .req-badge{
+    background:var(--amber); color:#1A1206;
+    font-size:10.5px; font-weight:700;
+    padding:1px 7px; border-radius:999px;
+  }
+  .friend-row{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:12px; padding:10px 0;
+    border-bottom:1px solid var(--border);
+  }
+  .friend-row:last-child{ border-bottom:none; }
+  .friend-info{ min-width:0; }
+  .friend-name{ font-size:14px; font-weight:600; color:var(--text); }
+  .friend-room{
+    font-size:12px; color:var(--text-muted); margin-top:2px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .btn-sm{ padding:7px 12px; font-size:12.5px; flex:none; }
+  .hint-text{ font-size:13px; color:var(--text-muted); }
 </style>
 </head>
 <body>
@@ -435,7 +469,7 @@
 <div class="filmstrip" id="filmstrip"></div>
 
 <header>
-  <div class="brand">
+  <div class="brand" id="btnGoHome" role="button" tabindex="0" title="Go to Movie Night home">
     <h1>Movie&nbsp;Night</h1>
     <span class="sub">watch anything, together, from anywhere</span>
   </div>
@@ -454,6 +488,35 @@
 </header>
 
 <main>
+
+  <!-- ===== HOME STAGE ===== -->
+  <div class="stage hidden" id="stage-home">
+    <div class="card">
+      <h2>Movie Night</h2>
+      <p class="lead">Host your room, or drop in on a friend's.</p>
+
+      <div class="home-section">
+        <div class="home-section-title">Your Room</div>
+        <div class="friend-row">
+          <div class="friend-info">
+            <div class="friend-name" id="homeRoomName">—</div>
+            <div class="friend-room" id="homeRoomId"></div>
+          </div>
+          <button class="btn btn-amber btn-sm" id="btnHomeHost">Host</button>
+        </div>
+      </div>
+
+      <div class="home-section hidden" id="requestsSection">
+        <div class="home-section-title">Friend Requests <span class="req-badge" id="requestsCount">0</span></div>
+        <div id="requestsList"></div>
+      </div>
+
+      <div class="home-section">
+        <div class="home-section-title">Friends</div>
+        <div id="friendsList"><div class="hint-text">Loading…</div></div>
+      </div>
+    </div>
+  </div>
 
   <!-- ===== AUTH STAGE ===== -->
   <div class="stage" id="stage-auth">
@@ -569,6 +632,7 @@
       <div class="controls">
         <button class="ctrl-btn off" id="btnMic" title="Mute/unmute mic">🔇</button>
         <button class="ctrl-btn" id="btnReshare" title="Re-select what you're sharing">🖥️</button>
+        <button class="ctrl-btn ctrl-btn-wide hidden" id="btnAddFriend" title="Add as friend">🤝 Add Friend</button>
         <div class="ctrl-spacer"></div>
         <button class="btn btn-danger" id="btnLeave">Leave</button>
       </div>
@@ -604,6 +668,7 @@
   let isHost = false;
   let micEnabled = false;
   let currentRoom = null; // { id, name } — the signed-in user's permanent room
+  let remoteUser = null;  // { uid, name } — identity of the peer we're connected to in a room
 
   const el = id => document.getElementById(id);
   const show = id => el(id).classList.remove('hidden');
@@ -769,10 +834,23 @@
   function wireDataConnection(){
     dataConn.on('open', () => {
       addSystemMessage('Connected — say hi 👋');
+      const user = auth.currentUser;
+      if(user){
+        dataConn.send({
+          type: 'identity',
+          uid: user.uid,
+          name: user.displayName || user.email || 'A friend'
+        });
+      }
     });
     dataConn.on('data', data => {
       if(data && data.type === 'chat'){
         addMessage(data.text, false);
+      } else if(data && data.type === 'identity' && data.uid){
+        remoteUser = { uid: data.uid, name: data.name || 'A friend' };
+        checkFriendshipStatus(remoteUser.uid)
+          .then(updateAddFriendButton)
+          .catch(() => { /* if this fails, just leave the button hidden */ });
       }
     });
     dataConn.on('close', () => {
@@ -794,7 +872,10 @@
   function addMessage(text, isMe){
     const wrap = document.createElement('div');
     wrap.className = 'msg ' + (isMe ? 'me' : '');
-    wrap.innerHTML = '<div class="who">' + (isMe ? 'You' : 'Friend') + '</div><div class="bubble"></div>';
+    const myName = (auth.currentUser && (auth.currentUser.displayName || auth.currentUser.email)) || 'You';
+    const otherName = (remoteUser && remoteUser.name) || 'Friend';
+    wrap.innerHTML = '<div class="who"></div><div class="bubble"></div>';
+    wrap.querySelector('.who').textContent = isMe ? myName : otherName;
     wrap.querySelector('.bubble').textContent = text;
     el('chatLog').appendChild(wrap);
     el('chatLog').scrollTop = el('chatLog').scrollHeight;
@@ -1092,9 +1173,221 @@
       hide('stage-room');
       hide('stage-lobby');
       hide('stage-room-setup');
+      hide('stage-home');
       show('stage-auth');
       setAuthMode('signin');
     }
+  });
+
+  // ---------- Friends ----------
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.textContent = str == null ? '' : String(str);
+    return d.innerHTML;
+  }
+
+  // Deterministic doc ID for a pair of users, so there's ever only one
+  // friend-request document per pair (avoids duplicate requests / needing queries).
+  function pairId(uidA, uidB){
+    return [uidA, uidB].sort().join('_');
+  }
+
+  async function checkFriendshipStatus(remoteUid){
+    const myUid = auth.currentUser.uid;
+    const pid = pairId(myUid, remoteUid);
+    const doc = await db.collection('friendRequests').doc(pid).get();
+    if(!doc.exists) return { state:'none', pid };
+    const data = doc.data();
+    if(data.status === 'accepted') return { state:'friends', pid };
+    if(data.status === 'pending'){
+      return { state: data.from === myUid ? 'pending_sent' : 'pending_received', pid, data };
+    }
+    return { state:'none', pid }; // declined or unknown -> allow a fresh request
+  }
+
+  function updateAddFriendButton(status){
+    const btn = el('btnAddFriend');
+    btn.classList.remove('hidden');
+    switch(status.state){
+      case 'friends':
+        btn.textContent = '✓ Friends';
+        btn.disabled = true;
+        break;
+      case 'pending_sent':
+        btn.textContent = 'Request Sent';
+        btn.disabled = true;
+        break;
+      case 'pending_received':
+        btn.textContent = '🤝 Accept Request';
+        btn.disabled = false;
+        break;
+      default:
+        btn.textContent = '🤝 Add Friend';
+        btn.disabled = false;
+        break;
+    }
+  }
+
+  async function acceptFriendship(pid, uidA, uidB, nameA, nameB){
+    const batch = db.batch();
+    batch.set(db.collection('friendRequests').doc(pid), { status:'accepted' }, { merge:true });
+    batch.set(db.collection('users').doc(uidA).collection('friends').doc(uidB), {
+      uid: uidB, name: nameB, addedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    batch.set(db.collection('users').doc(uidB).collection('friends').doc(uidA), {
+      uid: uidA, name: nameA, addedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await batch.commit();
+  }
+
+  el('btnAddFriend').addEventListener('click', async () => {
+    if(!remoteUser || !auth.currentUser) return;
+    const myUid = auth.currentUser.uid;
+    const myName = auth.currentUser.displayName || auth.currentUser.email || 'A friend';
+    const pid = pairId(myUid, remoteUser.uid);
+    const ref = db.collection('friendRequests').doc(pid);
+    el('btnAddFriend').disabled = true;
+    try{
+      const doc = await ref.get();
+      if(doc.exists && doc.data().status === 'pending' && doc.data().from !== myUid){
+        // They already sent us a request — clicking "Accept" here confirms it.
+        await acceptFriendship(pid, myUid, remoteUser.uid, myName, remoteUser.name);
+        updateAddFriendButton({ state:'friends' });
+      } else if(doc.exists && doc.data().status === 'accepted'){
+        updateAddFriendButton({ state:'friends' });
+      } else {
+        await ref.set({
+          from: myUid, to: remoteUser.uid,
+          fromName: myName, toName: remoteUser.name,
+          users: [myUid, remoteUser.uid],
+          status: 'pending',
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        updateAddFriendButton({ state:'pending_sent' });
+      }
+    }catch(err){
+      showError('lobbyError', "Couldn't send friend request: " + (err && err.message ? err.message : err));
+      updateAddFriendButton({ state:'none' });
+    }
+  });
+
+  function goToJoinRoom(roomId){
+    hide('stage-home');
+    show('stage-lobby');
+    el('toggleJoin').click();
+    el('joinCodeInput').value = roomId;
+  }
+
+  async function fetchAndRenderHome(){
+    const user = auth.currentUser;
+    if(!user) return;
+
+    el('homeRoomName').textContent = currentRoom ? currentRoom.name : '—';
+    el('homeRoomId').textContent = currentRoom ? currentRoom.id : 'No room yet';
+    el('btnHomeHost').disabled = !currentRoom;
+
+    // ----- Friends list -----
+    el('friendsList').innerHTML = '<div class="hint-text">Loading…</div>';
+    try{
+      const friendsSnap = await db.collection('users').doc(user.uid).collection('friends').get();
+      if(friendsSnap.empty){
+        el('friendsList').innerHTML = '<div class="hint-text">No friends yet — add someone the next time you\'re in a room together.</div>';
+      } else {
+        const friendDocs = friendsSnap.docs.map(d => d.data());
+        const roomDocs = await Promise.all(
+          friendDocs.map(f => db.collection('users').doc(f.uid).get())
+        );
+        el('friendsList').innerHTML = '';
+        friendDocs.forEach((f, i) => {
+          const roomData = roomDocs[i].exists ? roomDocs[i].data() : null;
+          const hasRoom = !!(roomData && roomData.roomId);
+          const row = document.createElement('div');
+          row.className = 'friend-row';
+          row.innerHTML =
+            '<div class="friend-info">' +
+              '<div class="friend-name">' + escapeHtml(f.name || 'Friend') + '</div>' +
+              '<div class="friend-room">' + escapeHtml(hasRoom ? roomData.roomName : 'No room yet') + '</div>' +
+            '</div>' +
+            '<button class="btn btn-outline btn-sm"' + (hasRoom ? '' : ' disabled') + '>Join</button>';
+          if(hasRoom){
+            row.querySelector('button').addEventListener('click', () => goToJoinRoom(roomData.roomId));
+          }
+          el('friendsList').appendChild(row);
+        });
+      }
+    }catch(err){
+      el('friendsList').innerHTML = '<div class="hint-text">Couldn\'t load friends: ' + escapeHtml(err && err.message ? err.message : err) + '</div>';
+    }
+
+    // ----- Incoming friend requests -----
+    try{
+      const reqSnap = await db.collection('friendRequests')
+        .where('to', '==', user.uid)
+        .where('status', '==', 'pending')
+        .get();
+      if(reqSnap.empty){
+        el('requestsSection').classList.add('hidden');
+        el('requestsList').innerHTML = '';
+      } else {
+        el('requestsSection').classList.remove('hidden');
+        el('requestsCount').textContent = reqSnap.size;
+        el('requestsList').innerHTML = '';
+        reqSnap.forEach(doc => {
+          const data = doc.data();
+          const row = document.createElement('div');
+          row.className = 'friend-row';
+          row.innerHTML =
+            '<div class="friend-info">' +
+              '<div class="friend-name">' + escapeHtml(data.fromName || 'Someone') + '</div>' +
+              '<div class="friend-room">wants to be friends</div>' +
+            '</div>' +
+            '<div style="display:flex; gap:6px;">' +
+              '<button class="btn btn-amber btn-sm req-accept">Accept</button>' +
+              '<button class="btn btn-outline btn-sm req-decline">Decline</button>' +
+            '</div>';
+          row.querySelector('.req-accept').addEventListener('click', async () => {
+            row.querySelectorAll('button').forEach(b => b.disabled = true);
+            try{
+              await acceptFriendship(doc.id, user.uid, data.from, user.displayName || user.email || 'Me', data.fromName);
+              fetchAndRenderHome();
+            }catch(err){
+              row.querySelectorAll('button').forEach(b => b.disabled = false);
+            }
+          });
+          row.querySelector('.req-decline').addEventListener('click', async () => {
+            row.querySelectorAll('button').forEach(b => b.disabled = true);
+            try{
+              await db.collection('friendRequests').doc(doc.id).update({ status:'declined' });
+              fetchAndRenderHome();
+            }catch(err){
+              row.querySelectorAll('button').forEach(b => b.disabled = false);
+            }
+          });
+          el('requestsList').appendChild(row);
+        });
+      }
+    }catch(err){
+      // non-fatal — leave whatever the friends section already rendered
+    }
+  }
+
+  el('btnGoHome').addEventListener('click', () => {
+    if(!auth.currentUser) return;
+    if(!el('stage-room').classList.contains('hidden')) return; // don't abandon an active call
+    hide('stage-lobby');
+    hide('stage-room-setup');
+    show('stage-home');
+    fetchAndRenderHome();
+  });
+  el('btnGoHome').addEventListener('keydown', e => {
+    if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); el('btnGoHome').click(); }
+  });
+
+  el('btnHomeHost').addEventListener('click', () => {
+    if(!currentRoom) return;
+    hide('stage-home');
+    show('stage-lobby');
+    el('toggleHost').click();
   });
 
 })();
