@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Movie Night — Watch Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<style>
+  :root{
+    --bg:#0B0E14;
+    --surface:#12161E;
+    --surface-2:#1A2029;
+    --border:#262D3A;
+    --text:#EDEEF0;
+    --text-muted:#8A909C;
+    --amber:#FFB238;
+    --amber-dim:#C98A2A;
+    --teal:#4FD1C5;
+    --danger:#E85C5C;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255,178,56,0.08), transparent),
+      var(--bg);
+    color:var(--text);
+    font-family:'Space Grotesk', sans-serif;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+  }
+  h1,h2,h3,.display{
+    font-family:'Bebas Neue', sans-serif;
+    letter-spacing:0.04em;
+    font-weight:400;
+  }
+  ::selection{ background:var(--amber); color:#0B0E14; }
+  button{ font-family:inherit; cursor:pointer; }
+  button:focus-visible, input:focus-visible{
+    outline:2px solid var(--amber);
+    outline-offset:2px;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.001ms !important; transition-duration:0.001ms !important; }
+  }
+
+  /* ---------- Film strip divider ---------- */
+  .filmstrip{
+    display:flex;
+    gap:6px;
+    padding:8px 20px;
+    background:#0A0C11;
+    border-bottom:1px solid var(--border);
+    overflow:hidden;
+  }
+  .filmstrip span{
+    width:9px; height:9px;
+    border-radius:2px;
+    background:#232838;
+    flex:none;
+  }
+
+  /* ---------- Header ---------- */
+  header{
+    padding:22px 28px 14px;
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+  header .brand{ display:flex; align-items:baseline; gap:10px; }
+  header .brand h1{ font-size:32px; color:var(--amber); margin:0; }
+  header .brand .sub{ color:var(--text-muted); font-size:13px; }
+  .status-pill{
+    font-size:12px;
+    padding:6px 12px;
+    border-radius:999px;
+    border:1px solid var(--border);
+    color:var(--text-muted);
+    display:flex; align-items:center; gap:7px;
+  }
+  .dot{ width:7px; height:7px; border-radius:50%; background:var(--text-muted); flex:none; }
+  .dot.live{ background:var(--teal); box-shadow:0 0 8px var(--teal); animation:pulse 1.6s ease-in-out infinite; }
+  .dot.err{ background:var(--danger); }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+  main{ flex:1; display:flex; flex-direction:column; align-items:center; padding:0 20px 40px; }
+
+  /* ---------- Screens (setup/lobby) ---------- */
+  .stage{
+    width:100%;
+    max-width:560px;
+    margin-top:8px;
+  }
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:28px;
+  }
+  .card h2{ font-size:24px; margin:0 0 6px; color:var(--text); }
+  .card p.lead{ color:var(--text-muted); font-size:14px; margin:0 0 22px; line-height:1.5; }
+  .step{
+    display:flex; gap:12px; align-items:flex-start;
+    padding:14px 0;
+    border-top:1px solid var(--border);
+  }
+  .step:first-of-type{ border-top:none; }
+  .step-num{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:20px;
+    color:var(--amber);
+    width:26px; flex:none;
+  }
+  .step-body{ flex:1; }
+  .step-body .label{ font-size:14px; font-weight:600; margin-bottom:2px; }
+  .step-body .hint{ font-size:12.5px; color:var(--text-muted); line-height:1.5; }
+
+  .btn{
+    border-radius:8px;
+    border:1px solid transparent;
+    padding:11px 18px;
+    font-size:14px;
+    font-weight:600;
+    transition:transform 0.08s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+  .btn:active{ transform:scale(0.97); }
+  .btn-amber{ background:var(--amber); color:#1A1206; }
+  .btn-amber:hover{ background:#ffc35e; }
+  .btn-outline{ background:transparent; border-color:var(--border); color:var(--text); }
+  .btn-outline:hover{ border-color:var(--amber); color:var(--amber); }
+  .btn-danger{ background:transparent; border-color:var(--danger); color:var(--danger); }
+  .btn-danger:hover{ background:rgba(232,92,92,0.1); }
+  .btn:disabled{ opacity:0.4; cursor:not-allowed; }
+  .btn-row{ display:flex; gap:10px; margin-top:20px; flex-wrap:wrap; }
+
+  input[type=text]{
+    width:100%;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:8px;
+    padding:11px 13px;
+    font-size:15px;
+    font-family:'Space Grotesk',sans-serif;
+    letter-spacing:0.03em;
+  }
+  input[type=text]::placeholder{ color:#565D6B; }
+
+  .toggle-row{ display:flex; gap:10px; margin:20px 0 4px; }
+  .toggle{
+    flex:1;
+    text-align:center;
+    padding:10px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    color:var(--text-muted);
+    font-size:13px;
+    font-weight:600;
+  }
+  .toggle.active{ border-color:var(--amber); color:var(--amber); background:rgba(255,178,56,0.07); }
+
+  /* ---------- Marquee (room code) ---------- */
+  .marquee{
+    position:relative;
+    margin:22px 0;
+    border:2px solid var(--amber-dim);
+    border-radius:10px;
+    padding:22px 20px;
+    text-align:center;
+    background:#161009;
+  }
+  .marquee .bulbs{
+    position:absolute; inset:6px;
+    border-radius:6px;
+    pointer-events:none;
+    background-image:
+      radial-gradient(circle, var(--amber) 1.5px, transparent 1.6px);
+    background-size:16px 16px;
+    background-position:0 0, 0 100%;
+    opacity:0.55;
+  }
+  .marquee .eyebrow{ font-size:11px; letter-spacing:0.15em; color:var(--amber-dim); text-transform:uppercase; margin-bottom:6px; }
+  .marquee .code{
+    font-family:'Bebas Neue', sans-serif;
+    font-size:40px;
+    letter-spacing:0.12em;
+    color:var(--amber);
+    word-break:break-all;
+  }
+  .marquee .copy-hint{ font-size:12px; color:var(--text-muted); margin-top:8px; }
+
+  .preview-wrap{
+    display:flex; gap:14px; margin:18px 0;
+  }
+  video.self-preview{
+    width:100%;
+    aspect-ratio:16/10;
+    background:#000;
+    border-radius:8px;
+    border:1px solid var(--border);
+    object-fit:contain;
+  }
+  .error-box{
+    margin-top:14px;
+    border:1px solid var(--danger);
+    background:rgba(232,92,92,0.08);
+    color:#ffb1b1;
+    padding:10px 13px;
+    border-radius:8px;
+    font-size:13px;
+    line-height:1.5;
+  }
+
+  /* ---------- Room ---------- */
+  .room{
+    width:100%;
+    max-width:1180px;
+    display:grid;
+    grid-template-columns:1fr 300px;
+    gap:16px;
+    align-items:start;
+  }
+  @media (max-width:860px){
+    .room{ grid-template-columns:1fr; }
+  }
+  .screen-area{
+    position:relative;
+    background:#000;
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    overflow:hidden;
+  }
+  video.remote-screen{
+    width:100%;
+    aspect-ratio:16/9;
+    display:block;
+    background:#000;
+    object-fit:contain;
+  }
+  .screen-placeholder{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:8px;
+    color:var(--text-muted);
+    text-align:center;
+    padding:20px;
+  }
+  .screen-placeholder .display{ font-size:26px; color:var(--text-muted); }
+  .pip{
+    position:absolute;
+    bottom:14px; right:14px;
+    width:150px;
+    aspect-ratio:16/10;
+    border-radius:6px;
+    overflow:hidden;
+    border:1px solid var(--border);
+    box-shadow:0 6px 20px rgba(0,0,0,0.5);
+    background:#000;
+  }
+  .pip video{ width:100%; height:100%; object-fit:contain; }
+  .pip .pip-label{
+    position:absolute; top:0; left:0;
+    font-size:9px; letter-spacing:0.06em;
+    background:rgba(0,0,0,0.6);
+    color:var(--text-muted);
+    padding:2px 6px;
+  }
+  .drm-note{
+    padding:8px 14px;
+    font-size:11.5px;
+    color:var(--text-muted);
+    border-top:1px solid var(--border);
+    line-height:1.5;
+  }
+
+  .controls{
+    display:flex; gap:10px; padding:14px;
+    border:1px solid var(--border); border-top:none;
+    border-bottom-left-radius:var(--radius); border-bottom-right-radius:var(--radius);
+    background:var(--surface);
+  }
+  .ctrl-btn{
+    width:44px; height:44px;
+    border-radius:50%;
+    border:1px solid var(--border);
+    background:var(--surface-2);
+    color:var(--text);
+    display:flex; align-items:center; justify-content:center;
+    font-size:17px;
+  }
+  .ctrl-btn:hover{ border-color:var(--amber); }
+  .ctrl-btn.off{ background:rgba(232,92,92,0.12); border-color:var(--danger); color:#ffb1b1; }
+  .ctrl-spacer{ flex:1; }
+
+  /* ---------- Chat panel ---------- */
+  .chat-panel{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    display:flex; flex-direction:column;
+    height:520px;
+  }
+  .chat-head{
+    padding:12px 14px;
+    border-bottom:1px solid var(--border);
+    font-size:12px; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--text-muted);
+  }
+  .chat-log{
+    flex:1;
+    overflow-y:auto;
+    padding:12px 14px;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .msg{ max-width:88%; }
+  .msg .who{ font-size:10.5px; color:var(--text-muted); margin-bottom:2px; }
+  .msg .bubble{
+    background:var(--surface-2);
+    padding:8px 11px;
+    border-radius:8px;
+    font-size:13.5px;
+    line-height:1.4;
+    word-wrap:break-word;
+  }
+  .msg.me{ align-self:flex-end; }
+  .msg.me .bubble{ background:rgba(255,178,56,0.14); border:1px solid rgba(255,178,56,0.3); }
+  .msg.sys .bubble{ background:transparent; border:1px dashed var(--border); color:var(--text-muted); font-size:12px; }
+  .chat-input-row{
+    display:flex; gap:8px;
+    padding:10px;
+    border-top:1px solid var(--border);
+  }
+  .chat-input-row input{ flex:1; }
+  .send-btn{
+    width:40px; border-radius:8px; background:var(--amber); color:#1A1206; border:none; font-weight:700;
+  }
+
+  footer{
+    text-align:center;
+    color:var(--text-muted);
+    font-size:11.5px;
+    padding:16px;
+  }
+
+  .hidden{ display:none !important; }
+</style>
+</head>
+<body>
+
+<div class="filmstrip" id="filmstrip"></div>
+
+<header>
+  <div class="brand">
+    <h1>Movie&nbsp;Night</h1>
+    <span class="sub">watch anything, together, from anywhere</span>
+  </div>
+  <div class="status-pill" id="statusPill">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">Not connected</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ===== SETUP STAGE ===== -->
+  <div class="stage" id="stage-setup">
+    <div class="card">
+      <h2>Get your screen &amp; mic ready</h2>
+      <p class="lead">You'll share this with your friend once you're both in the room. Nothing leaves your browser except the direct connection between the two of you.</p>
+
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="label">Share your screen</div>
+          <div class="hint">Pick a tab, window, or your whole screen. Check "share tab audio" if you want the movie's sound to carry over.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="label">Turn on your mic</div>
+          <div class="hint">So you can talk while you watch. You can mute it anytime once connected.</div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-amber" id="btnSetup">Set Up Screen &amp; Mic</button>
+      </div>
+
+      <video class="self-preview hidden" id="setupPreview" autoplay muted playsinline></video>
+      <div class="error-box hidden" id="setupError"></div>
+    </div>
+  </div>
+
+  <!-- ===== LOBBY STAGE ===== -->
+  <div class="stage hidden" id="stage-lobby">
+    <div class="card">
+      <h2>Start or join a screening</h2>
+      <p class="lead">One of you creates the room, the other joins with the code.</p>
+
+      <div class="toggle-row">
+        <div class="toggle active" id="toggleHost">Host</div>
+        <div class="toggle" id="toggleJoin">Join</div>
+      </div>
+
+      <!-- HOST -->
+      <div id="hostPanel">
+        <div class="btn-row">
+          <button class="btn btn-amber" id="btnCreateRoom">Create Room</button>
+        </div>
+        <div class="marquee hidden" id="hostMarquee">
+          <div class="bulbs"></div>
+          <div class="eyebrow">Room Code</div>
+          <div class="code" id="hostCode">— — — —</div>
+          <div class="copy-hint" id="copyHint">Tap to copy · send it to your friend</div>
+        </div>
+        <div id="hostWaiting" class="hint hidden" style="color:var(--text-muted); font-size:13px; margin-top:10px;">Waiting for your friend to join…</div>
+      </div>
+
+      <!-- JOIN -->
+      <div id="joinPanel" class="hidden">
+        <input type="text" id="joinCodeInput" placeholder="Enter room code">
+        <div class="btn-row">
+          <button class="btn btn-amber" id="btnJoinRoom">Join Screening</button>
+        </div>
+      </div>
+
+      <div class="error-box hidden" id="lobbyError"></div>
+    </div>
+  </div>
+
+  <!-- ===== ROOM STAGE ===== -->
+  <div class="room hidden" id="stage-room">
+    <div>
+      <div class="screen-area">
+        <video class="remote-screen" id="remoteVideo" autoplay playsinline></video>
+        <div class="screen-placeholder" id="screenPlaceholder">
+          <div class="display">Waiting for the picture…</div>
+          <div style="font-size:12.5px;">Your friend's screen will appear here</div>
+        </div>
+        <div class="pip">
+          <div class="pip-label">YOU</div>
+          <video id="selfVideoRoom" autoplay muted playsinline></video>
+        </div>
+      </div>
+      <div class="drm-note">Watching Netflix, Disney+, or another DRM-protected service? The video area may stay black — that's the platform blocking screen capture, not a bug. Audio and non-DRM sources (YouTube, local files) display normally.</div>
+      <div class="controls">
+        <button class="ctrl-btn" id="btnMic" title="Mute/unmute mic">🎙️</button>
+        <button class="ctrl-btn" id="btnReshare" title="Re-select what you're sharing">🖥️</button>
+        <div class="ctrl-spacer"></div>
+        <button class="btn btn-danger" id="btnLeave">Leave</button>
+      </div>
+    </div>
+
+    <div class="chat-panel">
+      <div class="chat-head">Chat</div>
+      <div class="chat-log" id="chatLog"></div>
+      <div class="chat-input-row">
+        <input type="text" id="chatInput" placeholder="Say something…">
+        <button class="send-btn" id="btnSend">➤</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<footer>Peer-to-peer via WebRTC · signaling handled by PeerJS's public broker · this is a prototype, not a hardened production service</footer>
+
+<script>
+(function(){
+  // Filmstrip decoration
+  const strip = document.getElementById('filmstrip');
+  for(let i=0;i<40;i++){ const s=document.createElement('span'); strip.appendChild(s); }
+
+  // ---------- State ----------
+  let localStream = null;     // combined screen(+audio) + mic track stream sent to peer
+  let screenTrack = null;
+  let micTrack = null;
+  let peer = null;
+  let mediaConn = null;
+  let dataConn = null;
+  let isHost = false;
+  let micEnabled = true;
+
+  const el = id => document.getElementById(id);
+  const show = id => el(id).classList.remove('hidden');
+  const hide = id => el(id).classList.add('hidden');
+
+  function setStatus(text, mode){
+    el('statusText').textContent = text;
+    const dot = el('statusDot');
+    dot.className = 'dot' + (mode ? ' '+mode : '');
+  }
+
+  function showError(boxId, msg){
+    const box = el(boxId);
+    box.textContent = msg;
+    box.classList.remove('hidden');
+  }
+  function clearError(boxId){ el(boxId).classList.add('hidden'); }
+
+  // ---------- Setup stage: capture screen + mic ----------
+  el('btnSetup').addEventListener('click', async () => {
+    clearError('setupError');
+    try{
+      const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
+      screenTrack = display.getVideoTracks()[0];
+      const screenAudioTrack = display.getAudioTracks()[0]; // may be undefined depending on browser/source
+
+      let mic;
+      try{
+        mic = await navigator.mediaDevices.getUserMedia({ audio:true });
+        micTrack = mic.getAudioTracks()[0];
+      }catch(micErr){
+        micTrack = null; // proceed without mic if user denies it
+      }
+
+      const combined = new MediaStream();
+      combined.addTrack(screenTrack);
+      if(screenAudioTrack) combined.addTrack(screenAudioTrack);
+      if(micTrack) combined.addTrack(micTrack);
+      localStream = combined;
+
+      // If the user stops sharing from the browser's native UI, reflect that
+      screenTrack.addEventListener('ended', () => {
+        setStatus('Screen sharing stopped', 'err');
+      });
+
+      const preview = el('setupPreview');
+      preview.srcObject = localStream;
+      show('setupPreview');
+
+      hide('stage-setup');
+      show('stage-lobby');
+      setStatus('Ready to connect', null);
+    }catch(err){
+      showError('setupError', "Couldn't get screen/mic access: " + (err && err.message ? err.message : err) + ". Make sure you allow the permission prompts, and that you're on https (or localhost).");
+    }
+  });
+
+  // ---------- Lobby: host/join toggle ----------
+  el('toggleHost').addEventListener('click', () => {
+    el('toggleHost').classList.add('active');
+    el('toggleJoin').classList.remove('active');
+    show('hostPanel'); hide('joinPanel');
+  });
+  el('toggleJoin').addEventListener('click', () => {
+    el('toggleJoin').classList.add('active');
+    el('toggleHost').classList.remove('active');
+    show('joinPanel'); hide('hostPanel');
+  });
+
+  function initPeer(onOpen){
+    peer = new Peer(); // uses PeerJS's free public signaling server
+    peer.on('open', id => onOpen(id));
+    peer.on('error', err => {
+      showError('lobbyError', 'Connection error: ' + (err && err.type ? err.type : err));
+      setStatus('Connection error', 'err');
+    });
+    peer.on('connection', conn => {
+      dataConn = conn;
+      wireDataConnection();
+    });
+    peer.on('call', call => {
+      mediaConn = call;
+      call.answer(localStream);
+      wireMediaConnection();
+      enterRoom();
+    });
+  }
+
+  // ---------- Host flow ----------
+  el('btnCreateRoom').addEventListener('click', () => {
+    clearError('lobbyError');
+    isHost = true;
+    el('btnCreateRoom').disabled = true;
+    initPeer(id => {
+      el('hostCode').textContent = id;
+      show('hostMarquee');
+      show('hostWaiting');
+      setStatus('Room open, waiting…', null);
+    });
+  });
+  el('hostMarquee') && el('hostMarquee').addEventListener('click', () => {
+    const code = el('hostCode').textContent;
+    if(code && code !== '— — — —'){
+      navigator.clipboard && navigator.clipboard.writeText(code).catch(()=>{});
+      el('copyHint').textContent = 'Copied!';
+      setTimeout(()=>{ el('copyHint').textContent = 'Tap to copy · send it to your friend'; }, 1500);
+    }
+  });
+
+  // ---------- Join flow ----------
+  el('btnJoinRoom').addEventListener('click', () => {
+    clearError('lobbyError');
+    const code = el('joinCodeInput').value.trim();
+    if(!code){ showError('lobbyError','Enter a room code first.'); return; }
+    isHost = false;
+    el('btnJoinRoom').disabled = true;
+    initPeer(myId => {
+      dataConn = peer.connect(code);
+      wireDataConnection();
+      mediaConn = peer.call(code, localStream);
+      wireMediaConnection();
+      enterRoom();
+      setStatus('Connecting…', null);
+    });
+  });
+
+  function wireMediaConnection(){
+    mediaConn.on('stream', remoteStream => {
+      el('remoteVideo').srcObject = remoteStream;
+      hide('screenPlaceholder');
+      setStatus('Connected', 'live');
+    });
+    mediaConn.on('close', () => {
+      setStatus('Friend disconnected', 'err');
+      show('screenPlaceholder');
+    });
+    mediaConn.on('error', () => {
+      setStatus('Media connection error', 'err');
+    });
+  }
+
+  function wireDataConnection(){
+    dataConn.on('open', () => {
+      addSystemMessage('Connected — say hi 👋');
+    });
+    dataConn.on('data', data => {
+      if(data && data.type === 'chat'){
+        addMessage(data.text, false);
+      }
+    });
+    dataConn.on('close', () => {
+      addSystemMessage('Your friend left the chat.');
+    });
+  }
+
+  function enterRoom(){
+    hide('stage-lobby');
+    show('stage-room');
+    el('selfVideoRoom').srcObject = localStream;
+  }
+
+  // ---------- Chat ----------
+  function addMessage(text, isMe){
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ' + (isMe ? 'me' : '');
+    wrap.innerHTML = '<div class="who">' + (isMe ? 'You' : 'Friend') + '</div><div class="bubble"></div>';
+    wrap.querySelector('.bubble').textContent = text;
+    el('chatLog').appendChild(wrap);
+    el('chatLog').scrollTop = el('chatLog').scrollHeight;
+  }
+  function addSystemMessage(text){
+    const wrap = document.createElement('div');
+    wrap.className = 'msg sys';
+    wrap.innerHTML = '<div class="bubble"></div>';
+    wrap.querySelector('.bubble').textContent = text;
+    el('chatLog').appendChild(wrap);
+    el('chatLog').scrollTop = el('chatLog').scrollHeight;
+  }
+
+  function sendChat(){
+    const input = el('chatInput');
+    const text = input.value.trim();
+    if(!text || !dataConn || !dataConn.open) return;
+    dataConn.send({ type:'chat', text });
+    addMessage(text, true);
+    input.value = '';
+  }
+  el('btnSend').addEventListener('click', sendChat);
+  el('chatInput').addEventListener('keydown', e => { if(e.key === 'Enter') sendChat(); });
+
+  // ---------- Room controls ----------
+  el('btnMic').addEventListener('click', () => {
+    if(!micTrack) return;
+    micEnabled = !micEnabled;
+    micTrack.enabled = micEnabled;
+    el('btnMic').classList.toggle('off', !micEnabled);
+    el('btnMic').textContent = micEnabled ? '🎙️' : '🔇';
+  });
+
+  el('btnReshare').addEventListener('click', async () => {
+    try{
+      const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
+      const newTrack = display.getVideoTracks()[0];
+      if(mediaConn && mediaConn.peerConnection){
+        const sender = mediaConn.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+        if(sender) sender.replaceTrack(newTrack);
+      }
+      localStream.getVideoTracks().forEach(t => localStream.removeTrack(t));
+      localStream.addTrack(newTrack);
+      el('selfVideoRoom').srcObject = localStream;
+      screenTrack = newTrack;
+    }catch(err){ /* user cancelled the picker */ }
+  });
+
+  el('btnLeave').addEventListener('click', () => {
+    if(dataConn) dataConn.close();
+    if(mediaConn) mediaConn.close();
+    if(peer) peer.destroy();
+    if(localStream) localStream.getTracks().forEach(t => t.stop());
+    location.reload();
+  });
+
+})();
+</script>
+
+</body>
+</html>
