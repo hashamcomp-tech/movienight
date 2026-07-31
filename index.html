@@ -1,0 +1,1774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Movie Night — Watch Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg:#0B0E14;
+    --surface:#12161E;
+    --surface-2:#1A2029;
+    --border:#262D3A;
+    --text:#EDEEF0;
+    --text-muted:#8A909C;
+    --amber:#FFB238;
+    --amber-dim:#C98A2A;
+    --teal:#4FD1C5;
+    --danger:#E85C5C;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255,178,56,0.08), transparent),
+      var(--bg);
+    color:var(--text);
+    font-family:'Space Grotesk', sans-serif;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+  }
+  h1,h2,h3,.display{
+    font-family:'Bebas Neue', sans-serif;
+    letter-spacing:0.04em;
+    font-weight:400;
+  }
+  ::selection{ background:var(--amber); color:#0B0E14; }
+  button{ font-family:inherit; cursor:pointer; }
+  button:focus-visible, input:focus-visible{
+    outline:2px solid var(--amber);
+    outline-offset:2px;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.001ms !important; transition-duration:0.001ms !important; }
+  }
+
+  /* ---------- Film strip divider ---------- */
+  .filmstrip{
+    display:flex;
+    gap:6px;
+    padding:8px 20px;
+    background:#0A0C11;
+    border-bottom:1px solid var(--border);
+    overflow:hidden;
+  }
+  .filmstrip span{
+    width:9px; height:9px;
+    border-radius:2px;
+    background:#232838;
+    flex:none;
+  }
+
+  /* ---------- Header ---------- */
+  header{
+    padding:22px 28px 14px;
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+  header .brand{ display:flex; align-items:baseline; gap:10px; cursor:pointer; }
+  header .brand:hover h1{ color:#ffc35e; }
+  header .brand:focus-visible{ outline:2px solid var(--amber); outline-offset:4px; border-radius:4px; }
+  header .brand h1{ font-size:32px; color:var(--amber); margin:0; }
+  header .brand .sub{ color:var(--text-muted); font-size:13px; }
+  .status-pill{
+    font-size:12px;
+    padding:6px 12px;
+    border-radius:999px;
+    border:1px solid var(--border);
+    color:var(--text-muted);
+    display:flex; align-items:center; gap:7px;
+  }
+  .dot{ width:7px; height:7px; border-radius:50%; background:var(--text-muted); flex:none; }
+  .dot.live{ background:var(--teal); box-shadow:0 0 8px var(--teal); animation:pulse 1.6s ease-in-out infinite; }
+  .dot.err{ background:var(--danger); }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+  main{ flex:1; display:flex; flex-direction:column; align-items:center; padding:0 20px 40px; }
+
+  /* ---------- Screens (setup/lobby) ---------- */
+  .stage{
+    width:100%;
+    max-width:560px;
+    margin-top:8px;
+  }
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:28px;
+  }
+  .card h2{ font-size:24px; margin:0 0 6px; color:var(--text); }
+  .card p.lead{ color:var(--text-muted); font-size:14px; margin:0 0 22px; line-height:1.5; }
+
+  .btn{
+    border-radius:8px;
+    border:1px solid transparent;
+    padding:11px 18px;
+    font-size:14px;
+    font-weight:600;
+    transition:transform 0.08s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+  .btn:active{ transform:scale(0.97); }
+  .btn-amber{ background:var(--amber); color:#1A1206; }
+  .btn-amber:hover{ background:#ffc35e; }
+  .btn-outline{ background:transparent; border-color:var(--border); color:var(--text); }
+  .btn-outline:hover{ border-color:var(--amber); color:var(--amber); }
+  .btn-danger{ background:transparent; border-color:var(--danger); color:var(--danger); }
+  .btn-danger:hover{ background:rgba(232,92,92,0.1); }
+  .btn:disabled{ opacity:0.4; cursor:not-allowed; }
+  .btn-row{ display:flex; gap:10px; margin-top:20px; flex-wrap:wrap; }
+
+  input[type=text]{
+    width:100%;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:8px;
+    padding:11px 13px;
+    font-size:15px;
+    font-family:'Space Grotesk',sans-serif;
+    letter-spacing:0.03em;
+  }
+  input[type=text]::placeholder{ color:#565D6B; }
+
+  .toggle-row{ display:flex; gap:10px; margin:20px 0 16px; }
+  .toggle{
+    flex:1;
+    text-align:center;
+    padding:10px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    color:var(--text-muted);
+    font-size:13px;
+    font-weight:600;
+  }
+  .toggle.active{ border-color:var(--amber); color:var(--amber); background:rgba(255,178,56,0.07); }
+
+  /* ---------- Marquee (room code) ---------- */
+  .marquee{
+    position:relative;
+    margin:22px 0;
+    border:2px solid var(--amber-dim);
+    border-radius:10px;
+    padding:22px 20px;
+    text-align:center;
+    background:#161009;
+  }
+  .marquee .bulbs{
+    position:absolute; inset:6px;
+    border-radius:6px;
+    pointer-events:none;
+    background-image:
+      radial-gradient(circle, var(--amber) 1.5px, transparent 1.6px);
+    background-size:16px 16px;
+    background-position:0 0, 0 100%;
+    opacity:0.55;
+  }
+  .marquee .eyebrow{ font-size:11px; letter-spacing:0.15em; color:var(--amber-dim); text-transform:uppercase; margin-bottom:6px; }
+  .marquee .code{
+    font-family:'Space Grotesk', monospace;
+    font-size:19px;
+    font-weight:700;
+    letter-spacing:0.02em;
+    color:var(--amber);
+    word-break:break-all;
+    line-height:1.4;
+  }
+  .marquee .copy-hint{ font-size:12px; color:var(--text-muted); margin-top:8px; }
+
+  .preview-wrap{
+    display:flex; gap:14px; margin:18px 0;
+  }
+  video.self-preview{
+    width:100%;
+    aspect-ratio:16/10;
+    background:#000;
+    border-radius:8px;
+    border:1px solid var(--border);
+    object-fit:contain;
+  }
+  .error-box{
+    margin-top:14px;
+    border:1px solid var(--danger);
+    background:rgba(232,92,92,0.08);
+    color:#ffb1b1;
+    padding:10px 13px;
+    border-radius:8px;
+    font-size:13px;
+    line-height:1.5;
+  }
+
+  /* ---------- Room ---------- */
+  .room{
+    width:100%;
+    max-width:1180px;
+    display:grid;
+    grid-template-columns:1fr 300px;
+    gap:16px;
+    align-items:start;
+  }
+  @media (max-width:860px){
+    .room{ grid-template-columns:1fr; }
+  }
+  .screen-area{
+    position:relative;
+    background:#000;
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    overflow:hidden;
+  }
+  video.remote-screen{
+    width:100%;
+    aspect-ratio:16/9;
+    display:block;
+    background:#000;
+    object-fit:contain;
+  }
+  .screen-placeholder{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:8px;
+    color:var(--text-muted);
+    text-align:center;
+    padding:20px;
+  }
+  .screen-placeholder .display{ font-size:26px; color:var(--text-muted); }
+  .pip{
+    position:absolute;
+    bottom:14px; right:14px;
+    width:150px;
+    aspect-ratio:16/10;
+    border-radius:6px;
+    overflow:hidden;
+    border:1px solid var(--border);
+    box-shadow:0 6px 20px rgba(0,0,0,0.5);
+    background:#000;
+  }
+  .pip video{ width:100%; height:100%; object-fit:contain; }
+  .pip .pip-label{
+    position:absolute; top:0; left:0;
+    font-size:9px; letter-spacing:0.06em;
+    background:rgba(0,0,0,0.6);
+    color:var(--text-muted);
+    padding:2px 6px;
+  }
+  .drm-note{
+    padding:8px 14px;
+    font-size:11.5px;
+    color:var(--text-muted);
+    border-top:1px solid var(--border);
+    line-height:1.5;
+  }
+
+  .controls{
+    display:flex; gap:10px; padding:14px;
+    border:1px solid var(--border); border-top:none;
+    border-bottom-left-radius:var(--radius); border-bottom-right-radius:var(--radius);
+    background:var(--surface);
+  }
+  .ctrl-btn{
+    width:44px; height:44px;
+    border-radius:50%;
+    border:1px solid var(--border);
+    background:var(--surface-2);
+    color:var(--text);
+    display:flex; align-items:center; justify-content:center;
+    font-size:17px;
+  }
+  .ctrl-btn:hover{ border-color:var(--amber); }
+  .ctrl-btn.off{ background:rgba(232,92,92,0.12); border-color:var(--danger); color:#ffb1b1; }
+  .ctrl-btn-wide{
+    width:auto; border-radius:8px; padding:0 14px; font-size:12.5px; font-weight:600; gap:6px;
+  }
+  .ctrl-btn-wide:disabled{ opacity:0.55; cursor:default; border-color:var(--border); }
+  .ctrl-spacer{ flex:1; }
+
+  /* ---------- Fullscreen ---------- */
+  .screen-area:fullscreen{
+    width:100vw; height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    background:#000;
+  }
+  .screen-area:-webkit-full-screen{
+    width:100vw; height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    background:#000;
+  }
+  .screen-area:fullscreen video.remote-screen,
+  .screen-area:-webkit-full-screen video.remote-screen{
+    width:100%; height:100%; object-fit:contain;
+  }
+
+  /* ---------- Chat panel ---------- */
+  .chat-panel{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    display:flex; flex-direction:column;
+    height:520px;
+  }
+  .chat-head{
+    padding:12px 14px;
+    border-bottom:1px solid var(--border);
+    font-size:12px; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--text-muted);
+  }
+  .chat-log{
+    flex:1;
+    overflow-y:auto;
+    padding:12px 14px;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .msg{ max-width:88%; }
+  .msg .who{ font-size:10.5px; color:var(--text-muted); margin-bottom:2px; }
+  .msg .bubble{
+    background:var(--surface-2);
+    padding:8px 11px;
+    border-radius:8px;
+    font-size:13.5px;
+    line-height:1.4;
+    word-wrap:break-word;
+  }
+  .msg.me{ align-self:flex-end; }
+  .msg.me .bubble{ background:rgba(255,178,56,0.14); border:1px solid rgba(255,178,56,0.3); }
+  .msg.sys .bubble{ background:transparent; border:1px dashed var(--border); color:var(--text-muted); font-size:12px; }
+  .chat-input-row{
+    display:flex; gap:8px;
+    padding:10px;
+    border-top:1px solid var(--border);
+  }
+  .chat-input-row input{ flex:1; }
+  .send-btn{
+    width:40px; border-radius:8px; background:var(--amber); color:#1A1206; border:none; font-weight:700;
+  }
+
+  footer{
+    text-align:center;
+    color:var(--text-muted);
+    font-size:11.5px;
+    padding:16px;
+  }
+
+  .hidden{ display:none !important; }
+
+  /* ---------- Auth ---------- */
+  .field-label{
+    display:block;
+    font-size:12px;
+    color:var(--text-muted);
+    margin:14px 0 6px;
+  }
+  .field-label:first-of-type{ margin-top:0; }
+  input[type=email], input[type=password]{
+    width:100%;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:8px;
+    padding:11px 13px;
+    font-size:15px;
+    font-family:'Space Grotesk',sans-serif;
+    letter-spacing:0.03em;
+  }
+  input[type=email]::placeholder, input[type=password]::placeholder{ color:#565D6B; }
+  .btn-block{ width:100%; }
+  .divider{
+    display:flex; align-items:center; gap:12px;
+    margin:20px 0;
+    color:var(--text-muted);
+    font-size:11px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+  }
+  .divider::before, .divider::after{
+    content:''; flex:1; height:1px; background:var(--border);
+  }
+  .btn-google{
+    background:var(--surface-2);
+    border-color:var(--border);
+    color:var(--text);
+    display:flex; align-items:center; justify-content:center; gap:10px;
+  }
+  .btn-google:hover{ border-color:var(--text-muted); }
+  .btn-google svg{ flex:none; }
+  .auth-switch{
+    text-align:center;
+    margin-top:18px;
+    font-size:13px;
+    color:var(--text-muted);
+  }
+  .auth-switch a{ color:var(--amber); text-decoration:none; cursor:pointer; }
+  .auth-switch a:hover{ text-decoration:underline; }
+
+  .user-chip{
+    display:flex; align-items:center; gap:8px;
+    font-size:12px;
+    padding:5px 6px 5px 6px;
+    border-radius:999px;
+    border:1px solid var(--border);
+    color:var(--text-muted);
+  }
+  .user-chip img{
+    width:22px; height:22px;
+    border-radius:50%;
+    background:var(--surface-2);
+  }
+  .user-chip .avatar-fallback{
+    width:22px; height:22px;
+    border-radius:50%;
+    background:var(--amber);
+    color:#1A1206;
+    font-weight:700;
+    font-size:11px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .user-chip .email{
+    max-width:150px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .user-chip button{
+    background:transparent;
+    border:none;
+    color:var(--text-muted);
+    font-size:11px;
+    padding:2px 6px;
+    text-decoration:underline;
+  }
+  .user-chip button:hover{ color:var(--amber); }
+  .header-right{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+
+  /* ---------- Home page ---------- */
+  .home-section{ margin-top:22px; padding-top:18px; border-top:1px solid var(--border); }
+  .home-section:first-of-type{ margin-top:0; padding-top:0; border-top:none; }
+  .home-section-title{
+    font-size:12px; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--text-muted); margin-bottom:12px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .req-badge{
+    background:var(--amber); color:#1A1206;
+    font-size:10.5px; font-weight:700;
+    padding:1px 7px; border-radius:999px;
+  }
+  .friend-row{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:12px; padding:10px 0;
+    border-bottom:1px solid var(--border);
+  }
+  .friend-row:last-child{ border-bottom:none; }
+  .friend-info{ min-width:0; }
+  .friend-name{ font-size:14px; font-weight:600; color:var(--text); }
+  .friend-room{
+    font-size:12px; color:var(--text-muted); margin-top:2px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .btn-sm{ padding:7px 12px; font-size:12.5px; flex:none; }
+  .hint-text{ font-size:13px; color:var(--text-muted); }
+
+  /* ---------- DM panel ---------- */
+  .dm-card{
+    display:flex; flex-direction:column;
+    height:70vh;
+    padding:0;
+    overflow:hidden;
+  }
+  .dm-head{
+    display:flex; align-items:center; gap:12px;
+    padding:14px 18px;
+    border-bottom:1px solid var(--border);
+    flex:none;
+  }
+  .dm-head .friend-name{ font-size:16px; }
+</style>
+</head>
+<body>
+
+<div class="filmstrip" id="filmstrip"></div>
+
+<header>
+  <div class="brand" id="btnGoHome" role="button" tabindex="0" title="Go to Movie Night home">
+    <h1>Movie&nbsp;Night</h1>
+    <span class="sub">watch anything, together, from anywhere</span>
+  </div>
+  <div class="header-right">
+    <div class="user-chip hidden" id="userChip">
+      <img id="userAvatarImg" class="hidden" alt="">
+      <span class="avatar-fallback hidden" id="userAvatarFallback"></span>
+      <span class="email" id="userEmail"></span>
+      <button id="btnSignOut">Sign out</button>
+    </div>
+    <div class="status-pill" id="statusPill">
+      <span class="dot" id="statusDot"></span>
+      <span id="statusText">Not connected</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ===== HOME STAGE ===== -->
+  <div class="stage hidden" id="stage-home">
+    <div class="card">
+      <h2>Movie Night</h2>
+      <p class="lead">Host your room, or drop in on a friend's.</p>
+
+      <div class="home-section">
+        <div class="home-section-title">Your Room</div>
+        <div class="friend-row">
+          <div class="friend-info">
+            <div class="friend-name" id="homeRoomName">—</div>
+            <div class="friend-room" id="homeRoomId"></div>
+          </div>
+          <button class="btn btn-amber btn-sm" id="btnHomeHost">Host</button>
+        </div>
+      </div>
+
+      <div class="home-section hidden" id="requestsSection">
+        <div class="home-section-title">Friend Requests <span class="req-badge" id="requestsCount">0</span></div>
+        <div id="requestsList"></div>
+      </div>
+
+      <div class="home-section">
+        <div class="home-section-title">Friends</div>
+        <div id="friendsList"><div class="hint-text">Loading…</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== DM STAGE ===== -->
+  <div class="stage hidden" id="stage-dm">
+    <div class="card dm-card">
+      <div class="dm-head">
+        <button class="btn btn-outline btn-sm" id="btnDmBack">← Back</button>
+        <div class="friend-name" id="dmFriendName">Friend</div>
+      </div>
+      <div class="chat-log" id="dmLog"></div>
+      <div class="chat-input-row">
+        <input type="text" id="dmInput" placeholder="Message…">
+        <button class="send-btn" id="btnDmSend">➤</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== AUTH STAGE ===== -->
+  <div class="stage" id="stage-auth">
+    <div class="card">
+      <h2 id="authTitle">Sign in</h2>
+      <p class="lead" id="authLead">Sign in to host or join a screening.</p>
+
+      <form id="authForm">
+        <label class="field-label" for="authEmail">Email</label>
+        <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" required>
+
+        <label class="field-label" for="authPassword">Password</label>
+        <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password" required>
+
+        <div class="btn-row">
+          <button type="submit" class="btn btn-amber btn-block" id="btnAuthSubmit">Sign In</button>
+        </div>
+      </form>
+
+      <div class="divider">or</div>
+
+      <button class="btn btn-google btn-block" id="btnGoogleSignIn">
+        <svg width="18" height="18" viewBox="0 0 18 18">
+          <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.13-.84 2.09-1.8 2.73v2.27h2.91c1.7-1.57 2.69-3.88 2.69-6.64z"/>
+          <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.27c-.81.54-1.85.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.34C2.44 15.98 5.48 18 9 18z"/>
+          <path fill="#FBBC05" d="M3.96 10.7A5.4 5.4 0 0 1 3.68 9c0-.59.1-1.17.28-1.7V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3-2.34z"/>
+          <path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l3 2.34C4.67 5.16 6.66 3.58 9 3.58z"/>
+        </svg>
+        Continue with Google
+      </button>
+
+      <div class="error-box hidden" id="authError"></div>
+
+      <div class="auth-switch">
+        <span id="authSwitchText">Don't have an account?</span> <a id="authSwitchLink">Create one</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== LOBBY STAGE ===== -->
+  <div class="stage hidden" id="stage-lobby">
+    <div class="card">
+      <h2>Start or join a screening</h2>
+      <p class="lead">Host a screening by sharing your screen, or join a friend's room.</p>
+
+      <div class="toggle-row">
+        <div class="toggle active" id="toggleHost">Host</div>
+        <div class="toggle" id="toggleJoin">Join</div>
+      </div>
+
+      <!-- HOST -->
+      <div id="hostPanel">
+        <div class="marquee" id="hostMarquee">
+          <div class="bulbs"></div>
+          <div class="eyebrow">Your Permanent Room ID</div>
+          <div class="code" id="hostCode">— — — —</div>
+          <div class="copy-hint" id="copyHint">Tap to copy · send it to your friend</div>
+        </div>
+        <div class="room-name-row" style="display:flex; align-items:center; justify-content:center; gap:8px; margin:12px 0 18px; font-size:13px; color:var(--text-muted);">
+          <span id="hostRoomName">My Room</span>
+          <a id="btnRenameRoom" style="color:var(--amber); cursor:pointer; text-decoration:none;">rename</a>
+        </div>
+        <div style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">You'll join the room right away — you can share your screen whenever you're ready, from inside the room.</div>
+        <div class="btn-row">
+          <button class="btn btn-amber" id="btnCreateRoom">Open Room</button>
+        </div>
+        <div id="hostWaiting" class="hint hidden" style="color:var(--text-muted); font-size:13px; margin-top:10px;">Waiting for your friend to join…</div>
+      </div>
+
+      <!-- JOIN -->
+      <div id="joinPanel" class="hidden">
+        <div style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">You only need to share your microphone so you can chat.</div>
+        <input type="text" id="joinCodeInput" placeholder="Enter room ID">
+        <div class="btn-row">
+          <button class="btn btn-amber" id="btnJoinRoom">Join Screening</button>
+        </div>
+      </div>
+
+      <div class="error-box hidden" id="lobbyError"></div>
+    </div>
+  </div>
+
+  <!-- ===== ROOM SETUP STAGE (first-time: name your room) ===== -->
+  <div class="stage hidden" id="stage-room-setup">
+    <div class="card">
+      <h2>Name your room</h2>
+      <p class="lead">This is your permanent room. Its code never changes, so you can reuse it and share it with the same friends any time.</p>
+      <label class="field-label" for="roomNameInput">Room name</label>
+      <input type="text" id="roomNameInput" placeholder="e.g. Friday Movie Night" maxlength="40">
+      <div class="btn-row">
+        <button class="btn btn-amber btn-block" id="btnCreateRoomSetup">Create My Room</button>
+      </div>
+      <div class="error-box hidden" id="roomSetupError"></div>
+    </div>
+  </div>
+
+  <!-- ===== ROOM STAGE ===== -->
+  <div class="room hidden" id="stage-room">
+    <div>
+      <div class="screen-area" id="screenArea">
+        <video class="remote-screen" id="remoteVideo" autoplay playsinline></video>
+        <div class="screen-placeholder" id="screenPlaceholder">
+          <div class="display">Waiting for the picture…</div>
+          <div style="font-size:12.5px;">Your friend's screen will appear here</div>
+        </div>
+        <div class="pip">
+          <div class="pip-label">YOU</div>
+          <video id="selfVideoRoom" autoplay muted playsinline></video>
+        </div>
+      </div>
+      <div class="drm-note">Watching Netflix, Disney+, or another DRM-protected service? The video area may stay black — that's the platform blocking screen capture, not a bug. Audio and non-DRM sources (YouTube, local files) display normally.</div>
+      <div class="controls">
+        <button class="ctrl-btn off" id="btnMic" title="Mute/unmute mic">🔇</button>
+        <button class="ctrl-btn ctrl-btn-wide hidden" id="btnShareScreen" title="Share your screen">🖥️ Share Screen</button>
+        <button class="ctrl-btn hidden" id="btnReshare" title="Re-select what you're sharing">🔁</button>
+        <button class="ctrl-btn" id="btnFullscreen" title="Fullscreen">⛶</button>
+        <button class="ctrl-btn ctrl-btn-wide hidden" id="btnRequestShare" title="Ask to share your screen">🙋 Request to Share</button>
+        <button class="ctrl-btn ctrl-btn-wide hidden" id="btnAddFriend" title="Add as friend">🤝 Add Friend</button>
+        <div class="ctrl-spacer"></div>
+        <button class="btn btn-danger" id="btnLeave">Leave</button>
+      </div>
+    </div>
+
+    <div class="chat-panel">
+      <div class="chat-head">Chat</div>
+      <div class="chat-log" id="chatLog"></div>
+      <div class="chat-input-row">
+        <input type="text" id="chatInput" placeholder="Say something…">
+        <button class="send-btn" id="btnSend">➤</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<footer>Peer-to-peer via WebRTC · signaling handled by PeerJS's public broker · this is a prototype, not a hardened production service</footer>
+
+<script>
+(function(){
+  // Filmstrip decoration
+  const strip = document.getElementById('filmstrip');
+  for(let i=0;i<40;i++){ const s=document.createElement('span'); strip.appendChild(s); }
+
+  // ---------- State ----------
+  let localStream = null;     // combined screen(+audio) + mic track stream sent to peer
+  let screenTrack = null;
+  let micTrack = null;
+  let peer = null;
+  let mediaConn = null;
+  let dataConn = null;
+  let isHost = false;
+  let micEnabled = false;
+  let currentRoom = null; // { id, name } — the signed-in user's permanent room
+  let remoteUser = null;  // { uid, name } — identity of the peer we're connected to in a room
+  let dmFriend = null;    // { uid, name } — who the DM panel is currently open with
+  let dmUnsub = null;     // Firestore listener unsubscribe function for the open DM thread
+  let joinedHostId = null;   // guest only: the room code/host peer id we connected to
+  let guestScreenConn = null; // the extra MediaConnection carrying the guest's shared screen
+  let guestScreenActive = false; // host only: is the guest currently sharing their screen
+  let guestSharingActive = false; // guest only: am I currently sharing my screen
+  let guestAudioStream = null; // host only: the guest's mic-only stream, kept aside so it can be
+                                // recombined with (or restored after) the guest's screen video
+  let hostScreenConn = null;  // the extra MediaConnection carrying the host's shared screen
+  let hostScreenActive = false; // guest only: is the host currently sharing their screen
+  let hostSharingActive = false; // host only: am I currently sharing my screen
+  let hostAudioStream = null; // guest only: the host's mic-only stream, kept aside the same way
+
+  const el = id => document.getElementById(id);
+  const show = id => el(id).classList.remove('hidden');
+  const hide = id => el(id).classList.add('hidden');
+
+  function setStatus(text, mode){
+    el('statusText').textContent = text;
+    const dot = el('statusDot');
+    dot.className = 'dot' + (mode ? ' '+mode : '');
+  }
+
+  function showError(boxId, msg){
+    const box = el(boxId);
+    box.textContent = msg;
+    box.classList.remove('hidden');
+  }
+  function clearError(boxId){ el(boxId).classList.add('hidden'); }
+
+  // ---------- Lobby: host/join toggle ----------
+  el('toggleHost').addEventListener('click', () => {
+    el('toggleHost').classList.add('active');
+    el('toggleJoin').classList.remove('active');
+    show('hostPanel'); hide('joinPanel');
+  });
+  el('toggleJoin').addEventListener('click', () => {
+    el('toggleJoin').classList.add('active');
+    el('toggleHost').classList.remove('active');
+    show('joinPanel'); hide('hostPanel');
+  });
+
+  function initPeer(onOpen, fixedId){
+    peer = fixedId ? new Peer(fixedId) : new Peer(); // uses PeerJS's free public signaling server
+    peer.on('open', id => onOpen(id));
+    peer.on('error', err => {
+      if(fixedId && err && err.type === 'unavailable-id'){
+        showError('lobbyError', 'Your room is already open in another tab or device. Close it there first, then try again.');
+      } else {
+        showError('lobbyError', 'Connection error: ' + (err && err.type ? err.type : err));
+      }
+      setStatus('Connection error', 'err');
+      el('btnCreateRoom').disabled = false;
+      if (el('btnJoinRoom')) el('btnJoinRoom').disabled = false;
+    });
+    peer.on('connection', conn => {
+      dataConn = conn;
+      wireDataConnection();
+    });
+    peer.on('call', call => {
+      if(call.metadata && call.metadata.kind === 'guest-screen'){
+        // Host receiving the guest's screen, on a separate connection from the main call
+        guestScreenConn = call;
+        call.answer(); // host has nothing to send back on this one
+        call.on('stream', remoteStream => { showGuestScreen(remoteStream); });
+        call.on('close', () => { clearGuestScreen(); });
+        return;
+      }
+      if(call.metadata && call.metadata.kind === 'host-screen'){
+        // Guest receiving the host's screen, on a separate connection from the main call
+        hostScreenConn = call;
+        call.answer(); // guest has nothing to send back on this one
+        call.on('stream', remoteStream => { showHostScreen(remoteStream); });
+        call.on('close', () => { clearHostScreen(); });
+        return;
+      }
+      // The primary call — audio-only from both sides. The host is already
+      // in the room by this point (entered it as soon as they opened it), so
+      // this only needs to wire the connection, not re-enter the room.
+      mediaConn = call;
+      call.answer(localStream);
+      wireMediaConnection();
+    });
+  }
+
+  // ---------- Host flow ----------
+  el('btnCreateRoom').addEventListener('click', async () => {
+    clearError('lobbyError');
+
+    try{
+      let mic;
+      try{
+        mic = await navigator.mediaDevices.getUserMedia({ audio:true });
+        micTrack = mic.getAudioTracks()[0];
+        if(micTrack) micTrack.enabled = false;
+      }catch(micErr){
+        micTrack = null;
+      }
+
+      const combined = new MediaStream();
+      if(micTrack) combined.addTrack(micTrack);
+      localStream = combined;
+
+      isHost = true;
+      el('btnCreateRoom').disabled = true;
+      initPeer(id => {
+        enterRoom();
+        setStatus('Room open, waiting…', null);
+      }, currentRoom && currentRoom.id);
+
+    }catch(err){
+      showError('lobbyError', "Couldn't get mic access: " + (err && err.message ? err.message : err));
+    }
+  });
+
+  el('hostMarquee') && el('hostMarquee').addEventListener('click', () => {
+    const code = el('hostCode').textContent;
+    if(code && code !== '— — — —'){
+      navigator.clipboard && navigator.clipboard.writeText(code).catch(()=>{});
+      el('copyHint').textContent = 'Copied!';
+      setTimeout(()=>{ el('copyHint').textContent = 'Tap to copy · send it to your friend'; }, 1500);
+    }
+  });
+
+  // ---------- Join flow ----------
+  el('btnJoinRoom').addEventListener('click', async () => {
+    clearError('lobbyError');
+    const code = el('joinCodeInput').value.trim();
+    if(!code){ showError('lobbyError','Enter a room code first.'); return; }
+    
+    // 1. Get mic only
+    try {
+      let mic;
+      try{
+        mic = await navigator.mediaDevices.getUserMedia({ audio:true });
+        micTrack = mic.getAudioTracks()[0];
+        if(micTrack) micTrack.enabled = false;
+      }catch(micErr){
+        micTrack = null;
+      }
+      
+      const combined = new MediaStream();
+      if(micTrack) combined.addTrack(micTrack);
+      localStream = combined;
+
+      // 2. Init peer and connect
+      isHost = false;
+      joinedHostId = code;
+      el('btnJoinRoom').disabled = true;
+      initPeer(myId => {
+        dataConn = peer.connect(code);
+        wireDataConnection();
+        mediaConn = peer.call(code, localStream);
+        wireMediaConnection();
+        enterRoom();
+        setStatus('Connecting…', null);
+      });
+    }catch(err){
+      showError('lobbyError', "Error initializing mic: " + (err && err.message ? err.message : err));
+    }
+  });
+
+  function wireMediaConnection(){
+    mediaConn.on('stream', remoteStream => {
+      // This primary connection only ever carries mic audio now (screens go
+      // over their own separate connections), and only one of these two
+      // "active" flags will ever be true for a given role — safe to stash
+      // under both names so showGuestScreen/showHostScreen can each find it.
+      guestAudioStream = remoteStream;
+      hostAudioStream = remoteStream;
+      if(!guestScreenActive && !hostScreenActive){
+        el('remoteVideo').srcObject = remoteStream;
+        hide('screenPlaceholder');
+      }
+      setStatus('Connected', 'live');
+    });
+    mediaConn.on('close', () => {
+      setStatus('Friend disconnected', 'err');
+      show('screenPlaceholder');
+      if(guestScreenConn){ guestScreenConn.close(); guestScreenConn = null; }
+      if(hostScreenConn){ hostScreenConn.close(); hostScreenConn = null; }
+      guestScreenActive = false;
+      hostScreenActive = false;
+      guestAudioStream = null;
+      hostAudioStream = null;
+    });
+    mediaConn.on('error', () => {
+      setStatus('Media connection error', 'err');
+    });
+  }
+
+  function setChatEnabled(enabled){
+    el('chatInput').disabled = !enabled;
+    el('btnSend').disabled = !enabled;
+    el('chatInput').placeholder = enabled ? 'Say something…' : 'Waiting for connection…';
+  }
+
+  function wireDataConnection(){
+    const handleOpen = () => {
+      addSystemMessage('Connected — say hi 👋');
+      setChatEnabled(true);
+      const user = auth.currentUser;
+      if(user){
+        dataConn.send({
+          type: 'identity',
+          uid: user.uid,
+          name: user.displayName || user.email || 'A friend'
+        });
+      }
+    };
+    // On the side that receives the connection (host), PeerJS can fire 'open'
+    // before this listener gets attached — check the flag directly so that
+    // case isn't missed.
+    if(dataConn.open){ handleOpen(); } else { dataConn.on('open', handleOpen); }
+
+    dataConn.on('data', data => {
+      if(!data || !data.type) return;
+      if(data.type === 'chat'){
+        addMessage(data.text, false);
+      } else if(data.type === 'identity' && data.uid){
+        remoteUser = { uid: data.uid, name: data.name || 'A friend' };
+        checkFriendshipStatus(remoteUser.uid)
+          .then(updateAddFriendButton)
+          .catch(() => { /* if this fails, just leave the button hidden */ });
+      } else if(data.type === 'share-request'){
+        addShareRequestMessage();
+      } else if(data.type === 'share-response'){
+        handleShareResponse(!!data.accepted);
+      } else if(data.type === 'share-stopped'){
+        addSystemMessage(((remoteUser && remoteUser.name) || 'Your friend') + ' stopped sharing their screen.');
+        if(isHost){ clearGuestScreen(); } else { clearHostScreen(); }
+      }
+    });
+    dataConn.on('close', () => {
+      addSystemMessage('Your friend left the chat.');
+      setChatEnabled(false);
+    });
+    dataConn.on('error', () => {
+      setChatEnabled(false);
+    });
+  }
+
+  function enterRoom(){
+    hide('stage-lobby');
+    show('stage-room');
+    el('selfVideoRoom').srcObject = localStream;
+    // The data channel and the media call open on independent, unordered
+    // events — the data channel often finishes first. Only force chat back
+    // to "disabled" here if it isn't already open, or we'd stomp on a chat
+    // that's already working.
+    if(!(dataConn && dataConn.open)){
+      setChatEnabled(false);
+    }
+    if(!isHost){
+      // Guests don't have a screen to reshare, but can ask to share their own
+      hide('btnShareScreen');
+      hide('btnReshare');
+      show('btnRequestShare');
+    } else {
+      // Hosts can share whenever they're ready — no upfront permission prompt.
+      // btnReshare only appears once they've actually started sharing.
+      hide('btnRequestShare');
+      show('btnShareScreen');
+      hide('btnReshare');
+    }
+  }
+
+  // ---------- Chat ----------
+  function addMessage(text, isMe){
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ' + (isMe ? 'me' : '');
+    const myName = (auth.currentUser && (auth.currentUser.displayName || auth.currentUser.email)) || 'You';
+    const otherName = (remoteUser && remoteUser.name) || 'Friend';
+    wrap.innerHTML = '<div class="who"></div><div class="bubble"></div>';
+    wrap.querySelector('.who').textContent = isMe ? myName : otherName;
+    wrap.querySelector('.bubble').textContent = text;
+    el('chatLog').appendChild(wrap);
+    el('chatLog').scrollTop = el('chatLog').scrollHeight;
+  }
+  function addSystemMessage(text){
+    const wrap = document.createElement('div');
+    wrap.className = 'msg sys';
+    wrap.innerHTML = '<div class="bubble"></div>';
+    wrap.querySelector('.bubble').textContent = text;
+    el('chatLog').appendChild(wrap);
+    el('chatLog').scrollTop = el('chatLog').scrollHeight;
+  }
+
+  // ---------- Guest screen-share permission (host side prompt lives in chat) ----------
+  function addShareRequestMessage(){
+    const askerName = (remoteUser && remoteUser.name) || 'Your friend';
+    const wrap = document.createElement('div');
+    wrap.className = 'msg sys';
+    wrap.innerHTML =
+      '<div class="bubble">' +
+        '<div></div>' +
+        '<div style="display:flex; gap:6px; margin-top:8px;">' +
+          '<button class="btn btn-amber btn-sm share-accept">Allow</button>' +
+          '<button class="btn btn-outline btn-sm share-decline">Decline</button>' +
+        '</div>' +
+      '</div>';
+    wrap.querySelector('.bubble > div').textContent = askerName + ' wants to share their screen.';
+    wrap.querySelector('.share-accept').addEventListener('click', () => {
+      wrap.querySelectorAll('button').forEach(b => b.disabled = true);
+      if(dataConn && dataConn.open) dataConn.send({ type:'share-response', accepted:true });
+      addSystemMessage('You allowed ' + askerName + ' to share their screen.');
+    });
+    wrap.querySelector('.share-decline').addEventListener('click', () => {
+      wrap.querySelectorAll('button').forEach(b => b.disabled = true);
+      if(dataConn && dataConn.open) dataConn.send({ type:'share-response', accepted:false });
+      addSystemMessage('You declined the screen share request.');
+    });
+    el('chatLog').appendChild(wrap);
+    el('chatLog').scrollTop = el('chatLog').scrollHeight;
+  }
+
+  // Host side: render the guest's shared screen, keeping the guest's mic audio playing
+  function showGuestScreen(remoteStream){
+    guestScreenActive = true;
+    const combined = new MediaStream();
+    remoteStream.getVideoTracks().forEach(t => combined.addTrack(t));
+    if(guestAudioStream){
+      guestAudioStream.getAudioTracks().forEach(t => combined.addTrack(t));
+    } else {
+      remoteStream.getAudioTracks().forEach(t => combined.addTrack(t));
+    }
+    el('remoteVideo').srcObject = combined;
+    hide('screenPlaceholder');
+    setStatus((remoteUser && remoteUser.name ? remoteUser.name : 'Your friend') + ' is sharing their screen', 'live');
+  }
+  // Host side: guest stopped sharing (or the extra connection closed) — fall back to the main call
+  function clearGuestScreen(){
+    guestScreenActive = false;
+    if(guestAudioStream){
+      el('remoteVideo').srcObject = guestAudioStream;
+    }
+    if(mediaConn) setStatus('Connected', 'live');
+  }
+
+  // Guest side: render the host's shared screen, keeping the host's mic audio playing
+  function showHostScreen(remoteStream){
+    hostScreenActive = true;
+    const combined = new MediaStream();
+    remoteStream.getVideoTracks().forEach(t => combined.addTrack(t));
+    if(hostAudioStream){
+      hostAudioStream.getAudioTracks().forEach(t => combined.addTrack(t));
+    } else {
+      remoteStream.getAudioTracks().forEach(t => combined.addTrack(t));
+    }
+    el('remoteVideo').srcObject = combined;
+    hide('screenPlaceholder');
+    setStatus((remoteUser && remoteUser.name ? remoteUser.name : 'Your friend') + ' is sharing their screen', 'live');
+  }
+  // Guest side: host stopped sharing (or the extra connection closed) — fall back to the main call
+  function clearHostScreen(){
+    hostScreenActive = false;
+    if(hostAudioStream){
+      el('remoteVideo').srcObject = hostAudioStream;
+    }
+    if(mediaConn) setStatus('Connected', 'live');
+  }
+
+  // Host side: start (or stop) sharing a screen. No permission from the guest
+  // is needed — this is the host's own room — the browser's own picker is
+  // the only prompt, and it only appears when this is clicked.
+  async function toggleHostShare(){
+    if(hostSharingActive){
+      if(screenTrack) screenTrack.stop(); // triggers the 'ended' handler below, which cleans up
+      return;
+    }
+    if(!dataConn || !dataConn.open || !dataConn.peer){
+      addSystemMessage("Your friend isn't connected yet — wait for them to join before sharing.");
+      return;
+    }
+    try{
+      const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
+      const videoTrack = display.getVideoTracks()[0];
+      const audioTrack = display.getAudioTracks()[0];
+      const hostScreenStream = new MediaStream();
+      hostScreenStream.addTrack(videoTrack);
+      if(audioTrack) hostScreenStream.addTrack(audioTrack);
+
+      el('selfVideoRoom').srcObject = hostScreenStream;
+      screenTrack = videoTrack;
+      hostSharingActive = true;
+      el('btnShareScreen').textContent = '🛑 Stop Sharing';
+      show('btnReshare');
+
+      hostScreenConn = peer.call(dataConn.peer, hostScreenStream, { metadata: { kind: 'host-screen' } });
+
+      videoTrack.addEventListener('ended', () => {
+        hostSharingActive = false;
+        el('btnShareScreen').textContent = '🖥️ Share Screen';
+        hide('btnReshare');
+        el('selfVideoRoom').srcObject = localStream;
+        screenTrack = null;
+        if(dataConn && dataConn.open) dataConn.send({ type:'share-stopped' });
+        if(hostScreenConn){ hostScreenConn.close(); hostScreenConn = null; }
+        addSystemMessage('You stopped sharing your screen.');
+      });
+    }catch(err){
+      addSystemMessage("Couldn't start screen sharing: " + (err && err.message ? err.message : err));
+    }
+  }
+
+  // Guest side: the host responded to a share request
+  async function handleShareResponse(accepted){
+    el('btnRequestShare').disabled = false;
+    el('btnRequestShare').textContent = '🙋 Request to Share';
+    if(!accepted){
+      addSystemMessage('Your friend declined your screen share request.');
+      return;
+    }
+    addSystemMessage('Your friend said yes — pick what to share.');
+    try{
+      const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
+      const videoTrack = display.getVideoTracks()[0];
+      const audioTrack = display.getAudioTracks()[0];
+      const guestScreenStream = new MediaStream();
+      guestScreenStream.addTrack(videoTrack);
+      if(audioTrack) guestScreenStream.addTrack(audioTrack);
+
+      el('selfVideoRoom').srcObject = guestScreenStream;
+      screenTrack = videoTrack;
+      guestSharingActive = true;
+      el('btnRequestShare').textContent = '🛑 Stop Sharing';
+
+      guestScreenConn = peer.call(joinedHostId, guestScreenStream, { metadata: { kind: 'guest-screen' } });
+
+      videoTrack.addEventListener('ended', () => {
+        guestSharingActive = false;
+        el('btnRequestShare').textContent = '🙋 Request to Share';
+        el('btnRequestShare').disabled = false;
+        el('selfVideoRoom').srcObject = localStream;
+        if(dataConn && dataConn.open) dataConn.send({ type:'share-stopped' });
+        if(guestScreenConn){ guestScreenConn.close(); guestScreenConn = null; }
+        addSystemMessage('You stopped sharing your screen.');
+      });
+    }catch(err){
+      addSystemMessage("Couldn't start screen sharing: " + (err && err.message ? err.message : err));
+    }
+  }
+
+  function sendChat(){
+    const input = el('chatInput');
+    const text = input.value.trim();
+    if(!text || !dataConn || !dataConn.open) return;
+    dataConn.send({ type:'chat', text });
+    addMessage(text, true);
+    input.value = '';
+  }
+  el('btnSend').addEventListener('click', sendChat);
+  el('chatInput').addEventListener('keydown', e => { if(e.key === 'Enter') sendChat(); });
+
+  // ---------- Room controls ----------
+  el('btnMic').addEventListener('click', () => {
+    if(!micTrack) return;
+    micEnabled = !micEnabled;
+    micTrack.enabled = micEnabled;
+    el('btnMic').classList.toggle('off', !micEnabled);
+    el('btnMic').textContent = micEnabled ? '🎙️' : '🔇';
+  });
+
+  el('btnShareScreen').addEventListener('click', toggleHostShare);
+
+  el('btnReshare').addEventListener('click', async () => {
+    try{
+      const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
+      const newTrack = display.getVideoTracks()[0];
+      if(hostScreenConn && hostScreenConn.peerConnection){
+        const sender = hostScreenConn.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+        if(sender) sender.replaceTrack(newTrack);
+      }
+      const oldTrack = screenTrack;
+      const pipStream = el('selfVideoRoom').srcObject;
+      if(pipStream instanceof MediaStream){
+        pipStream.getVideoTracks().forEach(t => pipStream.removeTrack(t));
+        pipStream.addTrack(newTrack);
+      }
+      screenTrack = newTrack;
+      if(oldTrack) oldTrack.stop();
+    }catch(err){ /* user cancelled the picker */ }
+  });
+
+  // ---------- Fullscreen ----------
+  function isFullscreen(){
+    return !!(document.fullscreenElement || document.webkitFullscreenElement);
+  }
+  function toggleFullscreen(){
+    const target = el('screenArea');
+    if(!isFullscreen()){
+      if(target.requestFullscreen) target.requestFullscreen();
+      else if(target.webkitRequestFullscreen) target.webkitRequestFullscreen();
+    } else {
+      if(document.exitFullscreen) document.exitFullscreen();
+      else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
+  }
+  el('btnFullscreen').addEventListener('click', toggleFullscreen);
+  el('remoteVideo').addEventListener('dblclick', toggleFullscreen);
+  document.addEventListener('fullscreenchange', () => {
+    el('btnFullscreen').textContent = isFullscreen() ? '⤢' : '⛶';
+  });
+  document.addEventListener('webkitfullscreenchange', () => {
+    el('btnFullscreen').textContent = isFullscreen() ? '⤢' : '⛶';
+  });
+
+  el('btnLeave').addEventListener('click', () => {
+    if(dataConn) dataConn.close();
+    if(mediaConn) mediaConn.close();
+    if(guestScreenConn) guestScreenConn.close();
+    if(peer) peer.destroy();
+    if(localStream) localStream.getTracks().forEach(t => t.stop());
+    if(guestSharingActive && screenTrack) screenTrack.stop();
+    location.reload();
+  });
+
+  // ---------- Firebase auth ----------
+  // TODO: replace with your own project's config (Firebase console -> Project settings -> General -> Your apps)
+  const firebaseConfig = {
+    apiKey: "AIzaSyA7Gq6TqE9e1tpbmqFTWlvnzIslFfDDiaY",
+    authDomain: "movienight-36005.firebaseapp.com",
+    projectId: "movienight-36005",
+    storageBucket: "movienight-36005.firebasestorage.app",
+    messagingSenderId: "66306477101",
+    appId: "1:66306477101:web:842aff7f7a4cf7f3f37ca4",
+    measurementId: "G-0TQ8BWN402"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+
+  let authMode = 'signin'; // 'signin' | 'signup'
+
+  function setAuthMode(mode){
+    authMode = mode;
+    clearAuthError();
+    if(mode === 'signup'){
+      el('authTitle').textContent = 'Create an account';
+      el('authLead').textContent = 'Sign up to host or join a screening.';
+      el('btnAuthSubmit').textContent = 'Sign Up';
+      el('authPassword').setAttribute('autocomplete','new-password');
+      el('authSwitchText').textContent = 'Already have an account?';
+      el('authSwitchLink').textContent = 'Sign in';
+    } else {
+      el('authTitle').textContent = 'Sign in';
+      el('authLead').textContent = 'Sign in to host or join a screening.';
+      el('btnAuthSubmit').textContent = 'Sign In';
+      el('authPassword').setAttribute('autocomplete','current-password');
+      el('authSwitchText').textContent = "Don't have an account?";
+      el('authSwitchLink').textContent = 'Create one';
+    }
+  }
+  el('authSwitchLink').addEventListener('click', () => {
+    setAuthMode(authMode === 'signin' ? 'signup' : 'signin');
+  });
+
+  function showAuthError(msg){
+    const box = el('authError');
+    box.textContent = msg;
+    box.classList.remove('hidden');
+  }
+  function clearAuthError(){ el('authError').classList.add('hidden'); }
+
+  function friendlyAuthError(err){
+    switch(err && err.code){
+      case 'auth/invalid-email': return 'That email address looks invalid.';
+      case 'auth/user-not-found': return 'No account found with that email.';
+      case 'auth/wrong-password': return 'Incorrect password.';
+      case 'auth/invalid-credential': return 'Incorrect email or password.';
+      case 'auth/email-already-in-use': return 'An account already exists with that email.';
+      case 'auth/weak-password': return 'Password should be at least 6 characters.';
+      case 'auth/popup-closed-by-user': return 'Google sign-in was closed before finishing.';
+      default: return (err && err.message) ? err.message : 'Something went wrong. Please try again.';
+    }
+  }
+
+  el('authForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearAuthError();
+    const email = el('authEmail').value.trim();
+    const password = el('authPassword').value;
+    el('btnAuthSubmit').disabled = true;
+    try{
+      if(authMode === 'signup'){
+        await auth.createUserWithEmailAndPassword(email, password);
+      } else {
+        await auth.signInWithEmailAndPassword(email, password);
+      }
+    }catch(err){
+      showAuthError(friendlyAuthError(err));
+    }finally{
+      el('btnAuthSubmit').disabled = false;
+    }
+  });
+
+  el('btnGoogleSignIn').addEventListener('click', async () => {
+    clearAuthError();
+    const provider = new firebase.auth.GoogleAuthProvider();
+    try{
+      await auth.signInWithPopup(provider);
+    }catch(err){
+      showAuthError(friendlyAuthError(err));
+    }
+  });
+
+  el('btnSignOut').addEventListener('click', async () => {
+    try{
+      if(dataConn) dataConn.close();
+      if(mediaConn) mediaConn.close();
+      if(peer) peer.destroy();
+      if(localStream) localStream.getTracks().forEach(t => t.stop());
+    }catch(e){ /* ignore cleanup errors during sign-out */ }
+    currentRoom = null;
+    await auth.signOut();
+  });
+
+  function renderUserChip(user){
+    el('userEmail').textContent = user.displayName || user.email || 'Signed in';
+    const img = el('userAvatarImg');
+    const fallback = el('userAvatarFallback');
+    if(user.photoURL){
+      img.src = user.photoURL;
+      img.classList.remove('hidden');
+      fallback.classList.add('hidden');
+    } else {
+      img.classList.add('hidden');
+      fallback.classList.remove('hidden');
+      const letter = (user.displayName || user.email || '?').trim().charAt(0).toUpperCase();
+      fallback.textContent = letter;
+    }
+    el('userChip').classList.remove('hidden');
+  }
+
+  // ---------- Permanent room ----------
+  function generateRoomCode(){
+    // Long, high-entropy, URL/WebRTC-safe ID (letters, digits, - and _).
+    // True punctuation like @ # % & isn't used here because PeerJS IDs travel
+    // through URLs and the signaling server, and those characters can break
+    // the connection — this charset stays 100% compatible while still giving
+    // ~140 bits of entropy, far beyond guessable.
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const length = 24;
+    let code = '';
+    if(window.crypto && window.crypto.getRandomValues){
+      const rand = new Uint32Array(length);
+      window.crypto.getRandomValues(rand);
+      for(let i=0;i<length;i++) code += chars[rand[i] % chars.length];
+    } else {
+      for(let i=0;i<length;i++) code += chars[Math.floor(Math.random()*chars.length)];
+    }
+    return code;
+  }
+
+  async function createRoomForUser(user, name){
+    let code, taken = true;
+    for(let i=0;i<8;i++){
+      code = generateRoomCode();
+      const existing = await db.collection('rooms').doc(code).get();
+      if(!existing.exists){ taken = false; break; }
+    }
+    if(taken) throw new Error("Couldn't generate a free room code — please try again.");
+    const roomName = (name && name.trim()) ? name.trim() : 'My Room';
+    await db.collection('rooms').doc(code).set({
+      uid: user.uid,
+      name: roomName,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await db.collection('users').doc(user.uid).set({
+      roomId: code,
+      roomName: roomName,
+      email: user.email || null
+    }, { merge:true });
+    return { id: code, name: roomName };
+  }
+
+  async function loadRoomForUser(uid){
+    const doc = await db.collection('users').doc(uid).get();
+    if(doc.exists && doc.data().roomId){
+      const data = doc.data();
+      return { id: data.roomId, name: data.roomName || 'My Room' };
+    }
+    return null;
+  }
+
+  function populateHostRoomUI(room){
+    el('hostCode').textContent = room.id;
+    el('hostRoomName').textContent = room.name;
+  }
+
+  el('btnCreateRoomSetup').addEventListener('click', async () => {
+    const user = auth.currentUser;
+    if(!user) return;
+    const nameInput = el('roomNameInput').value;
+    el('btnCreateRoomSetup').disabled = true;
+    el('roomSetupError').classList.add('hidden');
+    try{
+      const room = await createRoomForUser(user, nameInput);
+      currentRoom = room;
+      populateHostRoomUI(room);
+      hide('stage-room-setup');
+      show('stage-lobby');
+    }catch(err){
+      el('roomSetupError').textContent = (err && err.message) ? err.message : 'Could not create your room. Please try again.';
+      el('roomSetupError').classList.remove('hidden');
+    }finally{
+      el('btnCreateRoomSetup').disabled = false;
+    }
+  });
+
+  el('btnRenameRoom').addEventListener('click', async () => {
+    if(!currentRoom || !auth.currentUser) return;
+    const newName = prompt('Rename your room:', currentRoom.name);
+    if(newName === null) return; // cancelled
+    const trimmed = newName.trim();
+    if(!trimmed) return;
+    try{
+      await db.collection('users').doc(auth.currentUser.uid).set({ roomName: trimmed }, { merge:true });
+      await db.collection('rooms').doc(currentRoom.id).set({ name: trimmed }, { merge:true });
+      currentRoom.name = trimmed;
+      el('hostRoomName').textContent = trimmed;
+    }catch(err){
+      showError('lobbyError', "Couldn't rename your room: " + (err && err.message ? err.message : err));
+    }
+  });
+
+  auth.onAuthStateChanged(async user => {
+    if(user){
+      renderUserChip(user);
+      hide('stage-auth');
+      hide('stage-room');
+      try{
+        const room = await loadRoomForUser(user.uid);
+        if(room){
+          currentRoom = room;
+          populateHostRoomUI(room);
+          hide('stage-room-setup');
+          show('stage-lobby');
+        } else {
+          currentRoom = null;
+          hide('stage-lobby');
+          const suggested = user.displayName ? (user.displayName + "'s Room") : 'My Room';
+          el('roomNameInput').value = suggested;
+          show('stage-room-setup');
+        }
+      }catch(err){
+        // Firestore unreachable/misconfigured — fall back to showing the lobby without a permanent room
+        currentRoom = null;
+        showError('lobbyError', "Couldn't load your room: " + (err && err.message ? err.message : err));
+        hide('stage-room-setup');
+        show('stage-lobby');
+      }
+    } else {
+      currentRoom = null;
+      el('userChip').classList.add('hidden');
+      hide('stage-room');
+      hide('stage-lobby');
+      hide('stage-room-setup');
+      hide('stage-home');
+      show('stage-auth');
+      setAuthMode('signin');
+    }
+  });
+
+  // ---------- Friends ----------
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.textContent = str == null ? '' : String(str);
+    return d.innerHTML;
+  }
+
+  // Deterministic doc ID for a pair of users, so there's ever only one
+  // friend-request document per pair (avoids duplicate requests / needing queries).
+  function pairId(uidA, uidB){
+    return [uidA, uidB].sort().join('_');
+  }
+
+  async function checkFriendshipStatus(remoteUid){
+    const myUid = auth.currentUser.uid;
+    const pid = pairId(myUid, remoteUid);
+    const doc = await db.collection('friendRequests').doc(pid).get();
+    if(!doc.exists) return { state:'none', pid };
+    const data = doc.data();
+    if(data.status === 'accepted') return { state:'friends', pid };
+    if(data.status === 'pending'){
+      return { state: data.from === myUid ? 'pending_sent' : 'pending_received', pid, data };
+    }
+    return { state:'none', pid }; // declined or unknown -> allow a fresh request
+  }
+
+  function updateAddFriendButton(status){
+    const btn = el('btnAddFriend');
+    btn.classList.remove('hidden');
+    switch(status.state){
+      case 'friends':
+        btn.textContent = '✓ Friends';
+        btn.disabled = true;
+        break;
+      case 'pending_sent':
+        btn.textContent = 'Request Sent';
+        btn.disabled = true;
+        break;
+      case 'pending_received':
+        btn.textContent = '🤝 Accept Request';
+        btn.disabled = false;
+        break;
+      default:
+        btn.textContent = '🤝 Add Friend';
+        btn.disabled = false;
+        break;
+    }
+  }
+
+  async function acceptFriendship(pid, uidA, uidB, nameA, nameB){
+    const batch = db.batch();
+    batch.set(db.collection('friendRequests').doc(pid), { status:'accepted' }, { merge:true });
+    batch.set(db.collection('users').doc(uidA).collection('friends').doc(uidB), {
+      uid: uidB, name: nameB, addedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    batch.set(db.collection('users').doc(uidB).collection('friends').doc(uidA), {
+      uid: uidA, name: nameA, addedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await batch.commit();
+  }
+
+  el('btnAddFriend').addEventListener('click', async () => {
+    if(!remoteUser || !auth.currentUser) return;
+    const myUid = auth.currentUser.uid;
+    const myName = auth.currentUser.displayName || auth.currentUser.email || 'A friend';
+    const pid = pairId(myUid, remoteUser.uid);
+    const ref = db.collection('friendRequests').doc(pid);
+    el('btnAddFriend').disabled = true;
+    try{
+      const doc = await ref.get();
+      if(doc.exists && doc.data().status === 'pending' && doc.data().from !== myUid){
+        // They already sent us a request — clicking "Accept" here confirms it.
+        await acceptFriendship(pid, myUid, remoteUser.uid, myName, remoteUser.name);
+        updateAddFriendButton({ state:'friends' });
+      } else if(doc.exists && doc.data().status === 'accepted'){
+        updateAddFriendButton({ state:'friends' });
+      } else {
+        await ref.set({
+          from: myUid, to: remoteUser.uid,
+          fromName: myName, toName: remoteUser.name,
+          users: [myUid, remoteUser.uid],
+          status: 'pending',
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        updateAddFriendButton({ state:'pending_sent' });
+      }
+    }catch(err){
+      showError('lobbyError', "Couldn't send friend request: " + (err && err.message ? err.message : err));
+      updateAddFriendButton({ state:'none' });
+    }
+  });
+
+  function goToJoinRoom(roomId){
+    hide('stage-home');
+    show('stage-lobby');
+    el('toggleJoin').click();
+    el('joinCodeInput').value = roomId;
+  }
+
+  // ---------- Direct messages with friends (persisted in Firestore, works whether or not they're online) ----------
+  function addDmMessage(text, isMe){
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ' + (isMe ? 'me' : '');
+    wrap.innerHTML = '<div class="who"></div><div class="bubble"></div>';
+    wrap.querySelector('.who').textContent = isMe ? 'You' : ((dmFriend && dmFriend.name) || 'Friend');
+    wrap.querySelector('.bubble').textContent = text;
+    el('dmLog').appendChild(wrap);
+    el('dmLog').scrollTop = el('dmLog').scrollHeight;
+  }
+
+  function openDM(friendUid, friendName){
+    if(!auth.currentUser) return;
+    dmFriend = { uid: friendUid, name: friendName };
+    el('dmFriendName').textContent = friendName;
+    el('dmLog').innerHTML = '<div class="hint-text">Loading…</div>';
+    hide('stage-home');
+    show('stage-dm');
+
+    const myUid = auth.currentUser.uid;
+    const pid = pairId(myUid, friendUid);
+    if(dmUnsub){ dmUnsub(); dmUnsub = null; }
+    dmUnsub = db.collection('dms').doc(pid).collection('messages')
+      .orderBy('createdAt', 'asc')
+      .limitToLast(200)
+      .onSnapshot(snap => {
+        el('dmLog').innerHTML = '';
+        if(snap.empty){
+          el('dmLog').innerHTML = '<div class="hint-text">No messages yet — say hi.</div>';
+        }
+        snap.forEach(doc => {
+          const m = doc.data();
+          addDmMessage(m.text, m.from === myUid);
+        });
+      }, err => {
+        el('dmLog').innerHTML = '<div class="hint-text">Couldn\'t load messages: ' + escapeHtml(err && err.message ? err.message : err) + '</div>';
+      });
+  }
+
+  function closeDM(){
+    if(dmUnsub){ dmUnsub(); dmUnsub = null; }
+    dmFriend = null;
+    el('dmInput').value = '';
+    hide('stage-dm');
+    show('stage-home');
+    fetchAndRenderHome();
+  }
+
+  async function sendDM(){
+    const input = el('dmInput');
+    const text = input.value.trim();
+    if(!text || !dmFriend || !auth.currentUser) return;
+    const myUid = auth.currentUser.uid;
+    const pid = pairId(myUid, dmFriend.uid);
+    input.value = '';
+    try{
+      await db.collection('dms').doc(pid).collection('messages').add({
+        from: myUid,
+        to: dmFriend.uid,
+        text: text,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }catch(err){
+      addDmMessage('(message failed to send: ' + (err && err.message ? err.message : err) + ')', true);
+    }
+  }
+
+  el('btnDmBack').addEventListener('click', closeDM);
+  el('btnDmSend').addEventListener('click', sendDM);
+  el('dmInput').addEventListener('keydown', e => { if(e.key === 'Enter') sendDM(); });
+
+  async function fetchAndRenderHome(){
+    const user = auth.currentUser;
+    if(!user) return;
+
+    el('homeRoomName').textContent = currentRoom ? currentRoom.name : '—';
+    el('homeRoomId').textContent = currentRoom ? currentRoom.id : 'No room yet';
+    el('btnHomeHost').disabled = !currentRoom;
+
+    // ----- Friends list -----
+    el('friendsList').innerHTML = '<div class="hint-text">Loading…</div>';
+    try{
+      const friendsSnap = await db.collection('users').doc(user.uid).collection('friends').get();
+      if(friendsSnap.empty){
+        el('friendsList').innerHTML = '<div class="hint-text">No friends yet — add someone the next time you\'re in a room together.</div>';
+      } else {
+        const friendDocs = friendsSnap.docs.map(d => d.data());
+        const roomDocs = await Promise.all(
+          friendDocs.map(f => db.collection('users').doc(f.uid).get())
+        );
+        el('friendsList').innerHTML = '';
+        friendDocs.forEach((f, i) => {
+          const roomData = roomDocs[i].exists ? roomDocs[i].data() : null;
+          const hasRoom = !!(roomData && roomData.roomId);
+          const row = document.createElement('div');
+          row.className = 'friend-row';
+          row.innerHTML =
+            '<div class="friend-info">' +
+              '<div class="friend-name">' + escapeHtml(f.name || 'Friend') + '</div>' +
+              '<div class="friend-room">' + escapeHtml(hasRoom ? roomData.roomName : 'No room yet') + '</div>' +
+            '</div>' +
+            '<div style="display:flex; gap:6px; flex:none;">' +
+              '<button class="btn btn-outline btn-sm dm-btn">💬 Message</button>' +
+              '<button class="btn btn-outline btn-sm join-btn"' + (hasRoom ? '' : ' disabled') + '>Join</button>' +
+            '</div>';
+          row.querySelector('.dm-btn').addEventListener('click', () => openDM(f.uid, f.name || 'Friend'));
+          if(hasRoom){
+            row.querySelector('.join-btn').addEventListener('click', () => goToJoinRoom(roomData.roomId));
+          }
+          el('friendsList').appendChild(row);
+        });
+      }
+    }catch(err){
+      el('friendsList').innerHTML = '<div class="hint-text">Couldn\'t load friends: ' + escapeHtml(err && err.message ? err.message : err) + '</div>';
+    }
+
+    // ----- Incoming friend requests -----
+    try{
+      const reqSnap = await db.collection('friendRequests')
+        .where('to', '==', user.uid)
+        .where('status', '==', 'pending')
+        .get();
+      if(reqSnap.empty){
+        el('requestsSection').classList.add('hidden');
+        el('requestsList').innerHTML = '';
+      } else {
+        el('requestsSection').classList.remove('hidden');
+        el('requestsCount').textContent = reqSnap.size;
+        el('requestsList').innerHTML = '';
+        reqSnap.forEach(doc => {
+          const data = doc.data();
+          const row = document.createElement('div');
+          row.className = 'friend-row';
+          row.innerHTML =
+            '<div class="friend-info">' +
+              '<div class="friend-name">' + escapeHtml(data.fromName || 'Someone') + '</div>' +
+              '<div class="friend-room">wants to be friends</div>' +
+            '</div>' +
+            '<div style="display:flex; gap:6px;">' +
+              '<button class="btn btn-amber btn-sm req-accept">Accept</button>' +
+              '<button class="btn btn-outline btn-sm req-decline">Decline</button>' +
+            '</div>';
+          row.querySelector('.req-accept').addEventListener('click', async () => {
+            row.querySelectorAll('button').forEach(b => b.disabled = true);
+            try{
+              await acceptFriendship(doc.id, user.uid, data.from, user.displayName || user.email || 'Me', data.fromName);
+              fetchAndRenderHome();
+            }catch(err){
+              row.querySelectorAll('button').forEach(b => b.disabled = false);
+            }
+          });
+          row.querySelector('.req-decline').addEventListener('click', async () => {
+            row.querySelectorAll('button').forEach(b => b.disabled = true);
+            try{
+              await db.collection('friendRequests').doc(doc.id).update({ status:'declined' });
+              fetchAndRenderHome();
+            }catch(err){
+              row.querySelectorAll('button').forEach(b => b.disabled = false);
+            }
+          });
+          el('requestsList').appendChild(row);
+        });
+      }
+    }catch(err){
+      // non-fatal — leave whatever the friends section already rendered
+    }
+  }
+
+  el('btnGoHome').addEventListener('click', () => {
+    if(!auth.currentUser) return;
+    if(!el('stage-room').classList.contains('hidden')) return; // don't abandon an active call
+    hide('stage-lobby');
+    hide('stage-room-setup');
+    show('stage-home');
+    fetchAndRenderHome();
+  });
+  el('btnGoHome').addEventListener('keydown', e => {
+    if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); el('btnGoHome').click(); }
+  });
+
+  el('btnHomeHost').addEventListener('click', () => {
+    if(!currentRoom) return;
+    hide('stage-home');
+    show('stage-lobby');
+    el('toggleHost').click();
+  });
+
+})();
+</script>
+
+</body>
+</html>
