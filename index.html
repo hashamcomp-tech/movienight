@@ -690,8 +690,8 @@
       <div class="chat-head">Chat</div>
       <div class="chat-log" id="chatLog"></div>
       <div class="chat-input-row">
-        <input type="text" id="chatInput" placeholder="Say something…">
-        <button class="send-btn" id="btnSend">➤</button>
+        <input type="text" id="chatInput" placeholder="Waiting for connection…" disabled>
+        <button class="send-btn" id="btnSend" disabled>➤</button>
       </div>
     </div>
   </div>
@@ -962,6 +962,7 @@
   function enterRoom(){
     hide('stage-lobby');
     show('stage-room');
+    el('chatLog').innerHTML = '';
     el('selfVideoRoom').srcObject = localStream;
     // The data channel and the media call open on independent, unordered
     // events — the data channel often finishes first. Only force chat back
@@ -1163,10 +1164,18 @@
   function sendChat(){
     const input = el('chatInput');
     const text = input.value.trim();
-    if(!text || !dataConn || !dataConn.open) return;
-    dataConn.send({ type:'chat', text });
-    addMessage(text, true);
-    input.value = '';
+    if(!text) return;
+    if(!dataConn || !dataConn.open){
+      addSystemMessage("Can't send — not connected yet.");
+      return;
+    }
+    try{
+      dataConn.send({ type:'chat', text });
+      addMessage(text, true);
+      input.value = '';
+    }catch(err){
+      addSystemMessage('Message failed to send: ' + (err && err.message ? err.message : err));
+    }
   }
   el('btnSend').addEventListener('click', sendChat);
   el('chatInput').addEventListener('keydown', e => { if(e.key === 'Enter') sendChat(); });
@@ -1595,6 +1604,7 @@
     if(!auth.currentUser) return;
     dmFriend = { uid: friendUid, name: friendName };
     el('dmFriendName').textContent = friendName;
+    el('dmInput').value = '';
     el('dmLog').innerHTML = '<div class="hint-text">Loading…</div>';
     hide('stage-home');
     show('stage-dm');
@@ -1602,6 +1612,9 @@
     const myUid = auth.currentUser.uid;
     const pid = pairId(myUid, friendUid);
     if(dmUnsub){ dmUnsub(); dmUnsub = null; }
+
+    // Track whether this is the first snapshot so we can show the right placeholder
+    let firstLoad = true;
     dmUnsub = db.collection('dms').doc(pid).collection('messages')
       .orderBy('createdAt', 'asc')
       .limitToLast(200)
@@ -1609,11 +1622,13 @@
         el('dmLog').innerHTML = '';
         if(snap.empty){
           el('dmLog').innerHTML = '<div class="hint-text">No messages yet — say hi.</div>';
+        } else {
+          snap.forEach(doc => {
+            const m = doc.data();
+            addDmMessage(m.text, m.from === myUid);
+          });
         }
-        snap.forEach(doc => {
-          const m = doc.data();
-          addDmMessage(m.text, m.from === myUid);
-        });
+        firstLoad = false;
       }, err => {
         el('dmLog').innerHTML = '<div class="hint-text">Couldn\'t load messages: ' + escapeHtml(err && err.message ? err.message : err) + '</div>';
       });
@@ -1634,7 +1649,7 @@
     if(!text || !dmFriend || !auth.currentUser) return;
     const myUid = auth.currentUser.uid;
     const pid = pairId(myUid, dmFriend.uid);
-    input.value = '';
+    el('btnDmSend').disabled = true;
     try{
       await db.collection('dms').doc(pid).collection('messages').add({
         from: myUid,
@@ -1642,8 +1657,11 @@
         text: text,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
+      input.value = '';
     }catch(err){
       addDmMessage('(message failed to send: ' + (err && err.message ? err.message : err) + ')', true);
+    }finally{
+      el('btnDmSend').disabled = false;
     }
   }
 
