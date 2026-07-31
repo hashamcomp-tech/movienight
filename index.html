@@ -478,6 +478,21 @@
   }
   .btn-sm{ padding:7px 12px; font-size:12.5px; flex:none; }
   .hint-text{ font-size:13px; color:var(--text-muted); }
+
+  /* ---------- DM panel ---------- */
+  .dm-card{
+    display:flex; flex-direction:column;
+    height:70vh;
+    padding:0;
+    overflow:hidden;
+  }
+  .dm-head{
+    display:flex; align-items:center; gap:12px;
+    padding:14px 18px;
+    border-bottom:1px solid var(--border);
+    flex:none;
+  }
+  .dm-head .friend-name{ font-size:16px; }
 </style>
 </head>
 <body>
@@ -530,6 +545,21 @@
       <div class="home-section">
         <div class="home-section-title">Friends</div>
         <div id="friendsList"><div class="hint-text">Loading…</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== DM STAGE ===== -->
+  <div class="stage hidden" id="stage-dm">
+    <div class="card dm-card">
+      <div class="dm-head">
+        <button class="btn btn-outline btn-sm" id="btnDmBack">← Back</button>
+        <div class="friend-name" id="dmFriendName">Friend</div>
+      </div>
+      <div class="chat-log" id="dmLog"></div>
+      <div class="chat-input-row">
+        <input type="text" id="dmInput" placeholder="Message…">
+        <button class="send-btn" id="btnDmSend">➤</button>
       </div>
     </div>
   </div>
@@ -687,6 +717,8 @@
   let micEnabled = false;
   let currentRoom = null; // { id, name } — the signed-in user's permanent room
   let remoteUser = null;  // { uid, name } — identity of the peer we're connected to in a room
+  let dmFriend = null;    // { uid, name } — who the DM panel is currently open with
+  let dmUnsub = null;     // Firestore listener unsubscribe function for the open DM thread
   let joinedHostId = null;   // guest only: the room code/host peer id we connected to
   let guestScreenConn = null; // the extra MediaConnection carrying the guest's shared screen
   let guestScreenActive = false; // host only: is the guest currently sharing their screen
@@ -925,7 +957,13 @@
     hide('stage-lobby');
     show('stage-room');
     el('selfVideoRoom').srcObject = localStream;
-    setChatEnabled(false);
+    // The data channel and the media call open on independent, unordered
+    // events — the data channel often finishes first. Only force chat back
+    // to "disabled" here if it isn't already open, or we'd stomp on a chat
+    // that's already working.
+    if(!(dataConn && dataConn.open)){
+      setChatEnabled(false);
+    }
     if(!isHost){
       // Guests don't have a screen to reshare, but can ask to share their own
       hide('btnReshare');
@@ -1459,6 +1497,77 @@
     el('joinCodeInput').value = roomId;
   }
 
+  // ---------- Direct messages with friends (persisted in Firestore, works whether or not they're online) ----------
+  function addDmMessage(text, isMe){
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ' + (isMe ? 'me' : '');
+    wrap.innerHTML = '<div class="who"></div><div class="bubble"></div>';
+    wrap.querySelector('.who').textContent = isMe ? 'You' : ((dmFriend && dmFriend.name) || 'Friend');
+    wrap.querySelector('.bubble').textContent = text;
+    el('dmLog').appendChild(wrap);
+    el('dmLog').scrollTop = el('dmLog').scrollHeight;
+  }
+
+  function openDM(friendUid, friendName){
+    if(!auth.currentUser) return;
+    dmFriend = { uid: friendUid, name: friendName };
+    el('dmFriendName').textContent = friendName;
+    el('dmLog').innerHTML = '<div class="hint-text">Loading…</div>';
+    hide('stage-home');
+    show('stage-dm');
+
+    const myUid = auth.currentUser.uid;
+    const pid = pairId(myUid, friendUid);
+    if(dmUnsub){ dmUnsub(); dmUnsub = null; }
+    dmUnsub = db.collection('dms').doc(pid).collection('messages')
+      .orderBy('createdAt', 'asc')
+      .limitToLast(200)
+      .onSnapshot(snap => {
+        el('dmLog').innerHTML = '';
+        if(snap.empty){
+          el('dmLog').innerHTML = '<div class="hint-text">No messages yet — say hi.</div>';
+        }
+        snap.forEach(doc => {
+          const m = doc.data();
+          addDmMessage(m.text, m.from === myUid);
+        });
+      }, err => {
+        el('dmLog').innerHTML = '<div class="hint-text">Couldn\'t load messages: ' + escapeHtml(err && err.message ? err.message : err) + '</div>';
+      });
+  }
+
+  function closeDM(){
+    if(dmUnsub){ dmUnsub(); dmUnsub = null; }
+    dmFriend = null;
+    el('dmInput').value = '';
+    hide('stage-dm');
+    show('stage-home');
+    fetchAndRenderHome();
+  }
+
+  async function sendDM(){
+    const input = el('dmInput');
+    const text = input.value.trim();
+    if(!text || !dmFriend || !auth.currentUser) return;
+    const myUid = auth.currentUser.uid;
+    const pid = pairId(myUid, dmFriend.uid);
+    input.value = '';
+    try{
+      await db.collection('dms').doc(pid).collection('messages').add({
+        from: myUid,
+        to: dmFriend.uid,
+        text: text,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }catch(err){
+      addDmMessage('(message failed to send: ' + (err && err.message ? err.message : err) + ')', true);
+    }
+  }
+
+  el('btnDmBack').addEventListener('click', closeDM);
+  el('btnDmSend').addEventListener('click', sendDM);
+  el('dmInput').addEventListener('keydown', e => { if(e.key === 'Enter') sendDM(); });
+
   async function fetchAndRenderHome(){
     const user = auth.currentUser;
     if(!user) return;
@@ -1489,9 +1598,13 @@
               '<div class="friend-name">' + escapeHtml(f.name || 'Friend') + '</div>' +
               '<div class="friend-room">' + escapeHtml(hasRoom ? roomData.roomName : 'No room yet') + '</div>' +
             '</div>' +
-            '<button class="btn btn-outline btn-sm"' + (hasRoom ? '' : ' disabled') + '>Join</button>';
+            '<div style="display:flex; gap:6px; flex:none;">' +
+              '<button class="btn btn-outline btn-sm dm-btn">💬 Message</button>' +
+              '<button class="btn btn-outline btn-sm join-btn"' + (hasRoom ? '' : ' disabled') + '>Join</button>' +
+            '</div>';
+          row.querySelector('.dm-btn').addEventListener('click', () => openDM(f.uid, f.name || 'Friend'));
           if(hasRoom){
-            row.querySelector('button').addEventListener('click', () => goToJoinRoom(roomData.roomId));
+            row.querySelector('.join-btn').addEventListener('click', () => goToJoinRoom(roomData.roomId));
           }
           el('friendsList').appendChild(row);
         });
