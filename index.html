@@ -295,6 +295,22 @@
   .ctrl-btn-wide:disabled{ opacity:0.55; cursor:default; border-color:var(--border); }
   .ctrl-spacer{ flex:1; }
 
+  /* ---------- Fullscreen ---------- */
+  .screen-area:fullscreen{
+    width:100vw; height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    background:#000;
+  }
+  .screen-area:-webkit-full-screen{
+    width:100vw; height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    background:#000;
+  }
+  .screen-area:fullscreen video.remote-screen,
+  .screen-area:-webkit-full-screen video.remote-screen{
+    width:100%; height:100%; object-fit:contain;
+  }
+
   /* ---------- Chat panel ---------- */
   .chat-panel{
     background:var(--surface);
@@ -617,7 +633,7 @@
   <!-- ===== ROOM STAGE ===== -->
   <div class="room hidden" id="stage-room">
     <div>
-      <div class="screen-area">
+      <div class="screen-area" id="screenArea">
         <video class="remote-screen" id="remoteVideo" autoplay playsinline></video>
         <div class="screen-placeholder" id="screenPlaceholder">
           <div class="display">Waiting for the picture…</div>
@@ -632,6 +648,8 @@
       <div class="controls">
         <button class="ctrl-btn off" id="btnMic" title="Mute/unmute mic">🔇</button>
         <button class="ctrl-btn" id="btnReshare" title="Re-select what you're sharing">🖥️</button>
+        <button class="ctrl-btn" id="btnFullscreen" title="Fullscreen">⛶</button>
+        <button class="ctrl-btn ctrl-btn-wide hidden" id="btnRequestShare" title="Ask to share your screen">🙋 Request to Share</button>
         <button class="ctrl-btn ctrl-btn-wide hidden" id="btnAddFriend" title="Add as friend">🤝 Add Friend</button>
         <div class="ctrl-spacer"></div>
         <button class="btn btn-danger" id="btnLeave">Leave</button>
@@ -669,6 +687,12 @@
   let micEnabled = false;
   let currentRoom = null; // { id, name } — the signed-in user's permanent room
   let remoteUser = null;  // { uid, name } — identity of the peer we're connected to in a room
+  let joinedHostId = null;   // guest only: the room code/host peer id we connected to
+  let guestScreenConn = null; // the extra MediaConnection carrying the guest's shared screen
+  let guestScreenActive = false; // host only: is the guest currently sharing their screen
+  let guestSharingActive = false; // guest only: am I currently sharing my screen
+  let guestAudioStream = null; // host only: the guest's mic-only stream, kept aside so it can be
+                                // recombined with (or restored after) the guest's screen video
 
   const el = id => document.getElementById(id);
   const show = id => el(id).classList.remove('hidden');
@@ -717,6 +741,14 @@
       wireDataConnection();
     });
     peer.on('call', call => {
+      if(call.metadata && call.metadata.kind === 'guest-screen'){
+        // Host receiving the guest's screen, on a separate connection from the main call
+        guestScreenConn = call;
+        call.answer(); // host has nothing to send back on this one
+        call.on('stream', remoteStream => { showGuestScreen(remoteStream); });
+        call.on('close', () => { clearGuestScreen(); });
+        return;
+      }
       mediaConn = call;
       call.answer(localStream);
       wireMediaConnection();
@@ -802,6 +834,7 @@
 
       // 2. Init peer and connect
       isHost = false;
+      joinedHostId = code;
       el('btnJoinRoom').disabled = true;
       initPeer(myId => {
         dataConn = peer.connect(code);
@@ -818,22 +851,35 @@
 
   function wireMediaConnection(){
     mediaConn.on('stream', remoteStream => {
-      el('remoteVideo').srcObject = remoteStream;
-      hide('screenPlaceholder');
+      guestAudioStream = remoteStream;
+      if(!guestScreenActive){
+        el('remoteVideo').srcObject = remoteStream;
+        hide('screenPlaceholder');
+      }
       setStatus('Connected', 'live');
     });
     mediaConn.on('close', () => {
       setStatus('Friend disconnected', 'err');
       show('screenPlaceholder');
+      if(guestScreenConn){ guestScreenConn.close(); guestScreenConn = null; }
+      guestScreenActive = false;
+      guestAudioStream = null;
     });
     mediaConn.on('error', () => {
       setStatus('Media connection error', 'err');
     });
   }
 
+  function setChatEnabled(enabled){
+    el('chatInput').disabled = !enabled;
+    el('btnSend').disabled = !enabled;
+    el('chatInput').placeholder = enabled ? 'Say something…' : 'Waiting for connection…';
+  }
+
   function wireDataConnection(){
-    dataConn.on('open', () => {
+    const handleOpen = () => {
       addSystemMessage('Connected — say hi 👋');
+      setChatEnabled(true);
       const user = auth.currentUser;
       if(user){
         dataConn.send({
@@ -842,19 +888,36 @@
           name: user.displayName || user.email || 'A friend'
         });
       }
-    });
+    };
+    // On the side that receives the connection (host), PeerJS can fire 'open'
+    // before this listener gets attached — check the flag directly so that
+    // case isn't missed.
+    if(dataConn.open){ handleOpen(); } else { dataConn.on('open', handleOpen); }
+
     dataConn.on('data', data => {
-      if(data && data.type === 'chat'){
+      if(!data || !data.type) return;
+      if(data.type === 'chat'){
         addMessage(data.text, false);
-      } else if(data && data.type === 'identity' && data.uid){
+      } else if(data.type === 'identity' && data.uid){
         remoteUser = { uid: data.uid, name: data.name || 'A friend' };
         checkFriendshipStatus(remoteUser.uid)
           .then(updateAddFriendButton)
           .catch(() => { /* if this fails, just leave the button hidden */ });
+      } else if(data.type === 'share-request'){
+        addShareRequestMessage();
+      } else if(data.type === 'share-response'){
+        handleShareResponse(!!data.accepted);
+      } else if(data.type === 'share-stopped'){
+        addSystemMessage(((remoteUser && remoteUser.name) || 'Your friend') + ' stopped sharing their screen.');
+        clearGuestScreen();
       }
     });
     dataConn.on('close', () => {
       addSystemMessage('Your friend left the chat.');
+      setChatEnabled(false);
+    });
+    dataConn.on('error', () => {
+      setChatEnabled(false);
     });
   }
 
@@ -862,9 +925,13 @@
     hide('stage-lobby');
     show('stage-room');
     el('selfVideoRoom').srcObject = localStream;
+    setChatEnabled(false);
     if(!isHost){
-      // Guests don't have screen to reshare
+      // Guests don't have a screen to reshare, but can ask to share their own
       hide('btnReshare');
+      show('btnRequestShare');
+    } else {
+      hide('btnRequestShare');
     }
   }
 
@@ -887,6 +954,95 @@
     wrap.querySelector('.bubble').textContent = text;
     el('chatLog').appendChild(wrap);
     el('chatLog').scrollTop = el('chatLog').scrollHeight;
+  }
+
+  // ---------- Guest screen-share permission (host side prompt lives in chat) ----------
+  function addShareRequestMessage(){
+    const askerName = (remoteUser && remoteUser.name) || 'Your friend';
+    const wrap = document.createElement('div');
+    wrap.className = 'msg sys';
+    wrap.innerHTML =
+      '<div class="bubble">' +
+        '<div></div>' +
+        '<div style="display:flex; gap:6px; margin-top:8px;">' +
+          '<button class="btn btn-amber btn-sm share-accept">Allow</button>' +
+          '<button class="btn btn-outline btn-sm share-decline">Decline</button>' +
+        '</div>' +
+      '</div>';
+    wrap.querySelector('.bubble > div').textContent = askerName + ' wants to share their screen.';
+    wrap.querySelector('.share-accept').addEventListener('click', () => {
+      wrap.querySelectorAll('button').forEach(b => b.disabled = true);
+      if(dataConn && dataConn.open) dataConn.send({ type:'share-response', accepted:true });
+      addSystemMessage('You allowed ' + askerName + ' to share their screen.');
+    });
+    wrap.querySelector('.share-decline').addEventListener('click', () => {
+      wrap.querySelectorAll('button').forEach(b => b.disabled = true);
+      if(dataConn && dataConn.open) dataConn.send({ type:'share-response', accepted:false });
+      addSystemMessage('You declined the screen share request.');
+    });
+    el('chatLog').appendChild(wrap);
+    el('chatLog').scrollTop = el('chatLog').scrollHeight;
+  }
+
+  // Host side: render the guest's shared screen, keeping the guest's mic audio playing
+  function showGuestScreen(remoteStream){
+    guestScreenActive = true;
+    const combined = new MediaStream();
+    remoteStream.getVideoTracks().forEach(t => combined.addTrack(t));
+    if(guestAudioStream){
+      guestAudioStream.getAudioTracks().forEach(t => combined.addTrack(t));
+    } else {
+      remoteStream.getAudioTracks().forEach(t => combined.addTrack(t));
+    }
+    el('remoteVideo').srcObject = combined;
+    hide('screenPlaceholder');
+    setStatus((remoteUser && remoteUser.name ? remoteUser.name : 'Your friend') + ' is sharing their screen', 'live');
+  }
+  // Host side: guest stopped sharing (or the extra connection closed) — fall back to the main call
+  function clearGuestScreen(){
+    guestScreenActive = false;
+    if(guestAudioStream){
+      el('remoteVideo').srcObject = guestAudioStream;
+    }
+    if(mediaConn) setStatus('Connected', 'live');
+  }
+
+  // Guest side: the host responded to a share request
+  async function handleShareResponse(accepted){
+    el('btnRequestShare').disabled = false;
+    el('btnRequestShare').textContent = '🙋 Request to Share';
+    if(!accepted){
+      addSystemMessage('Your friend declined your screen share request.');
+      return;
+    }
+    addSystemMessage('Your friend said yes — pick what to share.');
+    try{
+      const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
+      const videoTrack = display.getVideoTracks()[0];
+      const audioTrack = display.getAudioTracks()[0];
+      const guestScreenStream = new MediaStream();
+      guestScreenStream.addTrack(videoTrack);
+      if(audioTrack) guestScreenStream.addTrack(audioTrack);
+
+      el('selfVideoRoom').srcObject = guestScreenStream;
+      screenTrack = videoTrack;
+      guestSharingActive = true;
+      el('btnRequestShare').textContent = '🛑 Stop Sharing';
+
+      guestScreenConn = peer.call(joinedHostId, guestScreenStream, { metadata: { kind: 'guest-screen' } });
+
+      videoTrack.addEventListener('ended', () => {
+        guestSharingActive = false;
+        el('btnRequestShare').textContent = '🙋 Request to Share';
+        el('btnRequestShare').disabled = false;
+        el('selfVideoRoom').srcObject = localStream;
+        if(dataConn && dataConn.open) dataConn.send({ type:'share-stopped' });
+        if(guestScreenConn){ guestScreenConn.close(); guestScreenConn = null; }
+        addSystemMessage('You stopped sharing your screen.');
+      });
+    }catch(err){
+      addSystemMessage("Couldn't start screen sharing: " + (err && err.message ? err.message : err));
+    }
   }
 
   function sendChat(){
@@ -924,11 +1080,36 @@
     }catch(err){ /* user cancelled the picker */ }
   });
 
+  // ---------- Fullscreen ----------
+  function isFullscreen(){
+    return !!(document.fullscreenElement || document.webkitFullscreenElement);
+  }
+  function toggleFullscreen(){
+    const target = el('screenArea');
+    if(!isFullscreen()){
+      if(target.requestFullscreen) target.requestFullscreen();
+      else if(target.webkitRequestFullscreen) target.webkitRequestFullscreen();
+    } else {
+      if(document.exitFullscreen) document.exitFullscreen();
+      else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
+  }
+  el('btnFullscreen').addEventListener('click', toggleFullscreen);
+  el('remoteVideo').addEventListener('dblclick', toggleFullscreen);
+  document.addEventListener('fullscreenchange', () => {
+    el('btnFullscreen').textContent = isFullscreen() ? '⤢' : '⛶';
+  });
+  document.addEventListener('webkitfullscreenchange', () => {
+    el('btnFullscreen').textContent = isFullscreen() ? '⤢' : '⛶';
+  });
+
   el('btnLeave').addEventListener('click', () => {
     if(dataConn) dataConn.close();
     if(mediaConn) mediaConn.close();
+    if(guestScreenConn) guestScreenConn.close();
     if(peer) peer.destroy();
     if(localStream) localStream.getTracks().forEach(t => t.stop());
+    if(guestSharingActive && screenTrack) screenTrack.stop();
     location.reload();
   });
 
